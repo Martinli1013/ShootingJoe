@@ -7,6 +7,10 @@ window.addEventListener('load', function() {
         return;
     }
 
+    // Set the actual size of the canvas element
+    canvas.width = CANVAS_WIDTH;
+    canvas.height = CANVAS_HEIGHT;
+
     const game = new Game(canvas);
     // game.startGame(); // Game now starts from GAME_STATE_START_SCREEN, user presses Enter
     game.loop(); // Start the game loop

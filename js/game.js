@@ -9,25 +9,50 @@ class Game {
         this.enemies = [];
         this.boss = null;
         this.ui = new UI(this);
+        this.textParticles = []; // Added for enemy death texts
         this.gameState = GAME_STATE_START_SCREEN; // Initial game state
 
         this.keys = {};
         this.lastEnemySpawnTime = 0;
         this.nextEnemySpawnInterval = getRandomInt(ENEMY_SPAWN_INTERVAL_MIN, ENEMY_SPAWN_INTERVAL_MAX);
         this.bossSpawned = false;
+        this.gameStartTime = 0; // To track game start time for boss spawn
+        this.bossSpawnTimeDelay = 2 * 60 * 1000; // 2 minutes in milliseconds
 
         this.backgroundY = 0; // For scrolling background
         // this.backgroundImage = new Image(); // Placeholder for background image
         // this.backgroundImage.src = 'path/to/your/pixel_art_background.png';
 
         this.showLevelUpMessageUntil = 0;
+        this.showHpRestoredMessageUntil = 0; // New property for HP restored message
+
+        this.firstSpawnDelayed = false;
+        this.initialSpawnDelayTime = 0;
 
         this.initInputHandlers();
+
+        // Preload ending images
+        this.endingSuccessImage = new Image();
+        this.isEndingSuccessImageLoaded = false;
+        this.endingSuccessImage.onload = () => { this.isEndingSuccessImageLoaded = true; console.log("Ending success image loaded."); };
+        this.endingSuccessImage.onerror = () => { console.error("Failed to load ending success image!"); };
+        this.endingSuccessImage.src = ENDING_SUCCESS_IMAGE_SRC;
+
+        this.endingFailImage = new Image();
+        this.isEndingFailImageLoaded = false;
+        this.endingFailImage.onload = () => { this.isEndingFailImageLoaded = true; console.log("Ending fail image loaded."); };
+        this.endingFailImage.onerror = () => { console.error("Failed to load ending fail image!"); };
+        this.endingFailImage.src = ENDING_FAIL_IMAGE_SRC;
     }
 
     initInputHandlers() {
         window.addEventListener('keydown', (e) => {
             this.keys[e.key] = true;
+            // Reverted: Removed e.preventDefault() for arrow keys
+            // if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
+            // e.preventDefault();
+            // }
+
             // Handle game state transitions on key press
             if (this.gameState === GAME_STATE_START_SCREEN && e.key === 'Enter') {
                 this.startGame();
@@ -46,12 +71,17 @@ class Game {
         this.player = new Player(CANVAS_WIDTH / 2 - PLAYER_WIDTH / 2, CANVAS_HEIGHT - PLAYER_HEIGHT - 20);
         this.enemies = [];
         this.boss = null;
+        this.textParticles = []; // Reset text particles
         this.bossSpawned = false;
         this.lastEnemySpawnTime = 0;
+        this.gameStartTime = 0; // Reset game start time
         this.nextEnemySpawnInterval = getRandomInt(ENEMY_SPAWN_INTERVAL_MIN, ENEMY_SPAWN_INTERVAL_MAX);
         this.gameState = GAME_STATE_START_SCREEN;
         this.backgroundY = 0;
         this.showLevelUpMessageUntil = 0;
+        this.showHpRestoredMessageUntil = 0; // Reset HP restored message
+        this.firstSpawnDelayed = false; // Reset initial spawn delay flag
+        this.initialSpawnDelayTime = 0;
         // Reset other necessary game variables
     }
 
@@ -59,12 +89,33 @@ class Game {
         if (this.gameState === GAME_STATE_PLAYING) return;
         this.resetGame(); // Ensure a fresh state before starting
         this.gameState = GAME_STATE_PLAYING;
-        console.log("Game Started!");
+        this.firstSpawnDelayed = true;
+        this.initialSpawnDelayTime = Date.now() + 1500; // Set 1.5 second delay for the first spawn
+        console.log("Game Started! Initial enemy spawn delayed.");
     }
 
     spawnEnemy() {
         const now = Date.now();
-        if (this.gameState !== GAME_STATE_PLAYING || this.bossSpawned) return; // Don't spawn if boss is active or not playing
+        if (this.gameState !== GAME_STATE_PLAYING || this.bossSpawned) return;
+
+        let currentSpawnIntervalMin = ENEMY_SPAWN_INTERVAL_MIN;
+        let currentSpawnIntervalMax = ENEMY_SPAWN_INTERVAL_MAX;
+
+        if (this.player && this.player.level >= PLAYER_LEVEL_FOR_FASTER_SPAWN) {
+            currentSpawnIntervalMin = ENEMY_SPAWN_INTERVAL_MIN_FASTER;
+            currentSpawnIntervalMax = ENEMY_SPAWN_INTERVAL_MAX_FASTER;
+        }
+
+        if (this.firstSpawnDelayed) {
+            if (now < this.initialSpawnDelayTime) {
+                return; // Not yet time for the first spawn after the initial delay
+            }
+            // Delay has passed, set up for the first actual spawn
+            this.lastEnemySpawnTime = now; // Start counting from now for the first interval
+            this.nextEnemySpawnInterval = getRandomInt(currentSpawnIntervalMin, currentSpawnIntervalMax);
+            this.firstSpawnDelayed = false;
+            // Fall through to the standard spawn check below, which should now trigger if interval is met
+        }
 
         if (now - this.lastEnemySpawnTime > this.nextEnemySpawnInterval) {
             const enemyTypeRoll = Math.random();
@@ -82,19 +133,16 @@ class Game {
                 y = getRandomFloat(0, CANVAS_HEIGHT * 0.4);
             }
 
-            if (enemyTypeRoll < 0.65) { // 65% chance for Type 1
-                newEnemy = new EnemyType1(x, y);
-            } else { // 35% chance for Type 2
+            if (enemyTypeRoll < 0.80) { // 80% chance for Type 1 (previously 0.65)
+                newEnemy = new EnemyType1(x, y, this.player ? this.player.level : 1);
+            } else { // 20% chance for Type 2 (previously 0.35)
                 newEnemy = new EnemyType2(x, y);
             }
             this.enemies.push(newEnemy);
             this.lastEnemySpawnTime = now;
-            this.nextEnemySpawnInterval = getRandomInt(ENEMY_SPAWN_INTERVAL_MIN, ENEMY_SPAWN_INTERVAL_MAX);
+            this.nextEnemySpawnInterval = getRandomInt(currentSpawnIntervalMin, currentSpawnIntervalMax);
 
-            // Simple logic to spawn boss after a certain number of enemies or time (can be improved)
-            if (this.enemies.length > 15 && !this.bossSpawned) { // Example: Spawn boss after 15 enemies
-                this.spawnBoss();
-            }
+            // Boss spawn logic is now in update()
         }
     }
 
@@ -113,15 +161,21 @@ class Game {
             return;
         }
 
+        // Check for Boss spawn based on player level
+        if (!this.bossSpawned && this.player && this.player.level >= 20) {
+            this.spawnBoss();
+        }
+
         // Update player
         this.player.handleInput(this.keys);
-        this.player.update(deltaTime);
+        this.player.update(deltaTime, this);
         if (!this.player.isActive) {
             this.gameState = GAME_STATE_GAME_OVER;
             return;
         }
         if (this.player.justLeveledUp) {
             this.showLevelUpMessageUntil = Date.now() + 2000; // Show for 2 seconds
+            this.showHpRestoredMessageUntil = Date.now() + 1000; // Show HP restored message for 1 second
             this.player.justLeveledUp = false; // Reset flag
             // Play level up sound here if desired
         }
@@ -129,6 +183,9 @@ class Game {
         // Spawn and update enemies
         this.spawnEnemy();
         this.enemies.forEach(enemy => enemy.update(deltaTime, this.player));
+
+        // Update text particles
+        this.textParticles.forEach(particle => particle.update(deltaTime));
 
         // Collision detection and handling
         this.handleCollisions();
@@ -139,6 +196,7 @@ class Game {
         if (this.boss && this.boss.bullets) {
             this.boss.bullets = this.boss.bullets.filter(bullet => bullet.isActive);
         }
+        this.textParticles = this.textParticles.filter(particle => particle.isActive);
 
         // Check for level clear (Boss defeated)
         if (this.boss && !this.boss.isActive && this.bossSpawned) {
@@ -161,12 +219,38 @@ class Game {
                 if (!enemy.isActive) return;
                 if (checkCollision(bullet, enemy)) {
                     bullet.isActive = false;
+                    const enemyWasActive = enemy.isActive; // Check before takeDamage
                     const expGained = enemy.takeDamage(bullet.damage);
+                    
+                    if (enemyWasActive && !enemy.isActive && !enemy.isBoss) { // Enemy was just destroyed and is not boss
+                        const particleX = enemy.x + enemy.width / 2;
+                        const particleY = enemy.y + enemy.height / 2;
+                        let deathText = "";
+                        if (enemy instanceof EnemyType1) {
+                            if (Math.random() < 0.2) {
+                                deathText = ENEMY_TYPE_1_SPECIAL_DEATH_TEXT; 
+                            } else {
+                                deathText = ENEMY_TYPE_1_DEATH_TEXTS[Math.floor(Math.random() * ENEMY_TYPE_1_DEATH_TEXTS.length)];
+                            }
+                        } else if (enemy instanceof EnemyType2) {
+                            if (Math.random() < 0.3) { // 30% chance for special death text
+                                deathText = ENEMY_TYPE_2_SPECIAL_DEATH_TEXTS[Math.floor(Math.random() * ENEMY_TYPE_2_SPECIAL_DEATH_TEXTS.length)];
+                            } else {
+                                // Use EnemyType1's standard death texts if special condition is not met
+                                deathText = ENEMY_TYPE_1_DEATH_TEXTS[Math.floor(Math.random() * ENEMY_TYPE_1_DEATH_TEXTS.length)];
+                            }
+                        } else if (enemy instanceof BossEnemy) {
+                            // Boss death text is handled by its own dialogue system, or you can add specific text here
+                        }
+
+                        if (deathText) {
+                            this.textParticles.push(new TextParticle(particleX, particleY, deathText));
+                        }
+                    }
+
                     if (expGained > 0) {
                         this.player.gainExp(expGained);
-                        // Removed crude level up message trigger from here
                     }
-                    // Play enemy hit/destroy sound
                 }
             });
         });
@@ -177,10 +261,14 @@ class Game {
 
             // Direct collision with player
             if (checkCollision(this.player, enemy)) {
-                if (!enemy.isBoss) { // Boss doesn't do collision damage by ramming
+                if (!enemy.isBoss) { // Regular enemies die and damage player
                     this.player.takeDamage(enemy.collisionDamage);
-                    enemy.isActive = false; // Regular enemies die on collision with player
+                    enemy.isActive = false; 
                     // Play player hit sound & enemy destroy sound
+                } else {
+                    // Player is overlapping with Boss. HP regeneration is handled in Player.update().
+                    // Boss does not take damage from this type of collision, nor does player.
+                    // Dialogue change is handled in BossEnemy.updateDialogue().
                 }
             }
 
@@ -199,27 +287,33 @@ class Game {
     }
 
     draw() {
-        // Clear canvas
+        // Removed ctx.save(), ctx.scale(), ctx.restore()
+
+        // Clear canvas (using original CANVAS_WIDTH/HEIGHT)
         this.ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-        // Draw scrolling background (placeholder)
-        // If using an actual image, draw it twice for seamless scrolling
-        // this.ctx.drawImage(this.backgroundImage, 0, this.backgroundY, CANVAS_WIDTH, CANVAS_HEIGHT);
-        // this.ctx.drawImage(this.backgroundImage, 0, this.backgroundY - CANVAS_HEIGHT, CANVAS_WIDTH, CANVAS_HEIGHT);
-        // Simple color background for now
-        this.ctx.fillStyle = '#001f3f'; // Dark blue background
-        this.ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        // Add some stars for a simple space effect
-        this.drawStars(); 
-
-
-        // Draw game objects if playing
-        if (this.gameState === GAME_STATE_PLAYING || this.gameState === GAME_STATE_LEVEL_CLEAR || this.gameState === GAME_STATE_GAME_OVER) {
-            if(this.player) this.player.draw(this.ctx);
-            this.enemies.forEach(enemy => enemy.draw(this.ctx));
+        // Draw background based on game state
+        if (this.gameState === GAME_STATE_LEVEL_CLEAR && this.isEndingSuccessImageLoaded) {
+            this.ctx.drawImage(this.endingSuccessImage, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        } else if (this.gameState === GAME_STATE_GAME_OVER && this.isEndingFailImageLoaded) {
+            this.ctx.drawImage(this.endingFailImage, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        } else {
+            // Default scrolling background for playing, start screen, or if ending images not loaded
+            this.ctx.fillStyle = '#001f3f'; // Dark blue background
+            this.ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            this.drawStars(); // Add some stars for a simple space effect
         }
 
-        // Draw UI on top of everything
+        // Draw game objects ONLY if playing
+        if (this.gameState === GAME_STATE_PLAYING) {
+            if(this.player) this.player.draw(this.ctx);
+            this.enemies.forEach(enemy => enemy.draw(this.ctx));
+            // Player bullets are drawn by player.draw(), boss bullets by boss.draw()
+            // So we only need to draw text particles separately if they are managed by the game class
+            this.textParticles.forEach(particle => particle.draw(this.ctx));
+        }
+
+        // Draw UI on top of everything (UI class will handle what to show based on state)
         this.ui.draw(this.ctx);
     }
     

@@ -7,103 +7,250 @@ class Player extends GameObject {
         this.exp = 0;
         this.level = 1;
         this.speed = PLAYER_SPEED;
+        this.updateSpeedForLevel();
 
         this.bullets = [];
         this.lastShotTime = 0;
         this.fireRate = PLAYER_FIRE_RATE;
 
-        // Input handling
-        this.keys = {};
-        this.isFlashing = false;
-        this.flashEndTime = 0;
-        this.flashVisible = true;
-        this.lastFlashToggleTime = 0;
+        this.bulletWidth = PLAYER_BULLET_WIDTH;
+        this.bulletHeight = PLAYER_BULLET_HEIGHT;
 
-        this.zhaogeImage = null; // Placeholder for "卓哥的小照片"
-        this.showZhaogeImageTime = 0;
-        this.justLeveledUp = false; // Flag for level up message
-        // this.loadZhaogeImage(); // Implement image loading if using actual images
+        this.keys = {};
+        this.justLeveledUp = false;
+
+        this.image = new Image();
+        this.isImageLoaded = false;
+        this.image.onload = () => { 
+            this.isImageLoaded = true; 
+            console.log("Player image loaded:", this.image.src, "Dimensions:", this.image.naturalWidth, "x", this.image.naturalHeight);
+        };
+        this.image.onerror = () => { 
+            console.error("Error loading player image:", this.image.src);
+        };
+        this.levelImages = {
+            1: 'img/imgplayer_start.png',
+            5: 'img/imgplayer_level5.png',
+            10: 'img/imgplayer_level10.png',
+            15: 'img/imgplayer_level15.png'
+        };
+        this.setPlayerImageForLevel(this.level);
+
+        this.hitFeedbackImage = new Image();
+        this.isHitFeedbackImageLoaded = false;
+        this.hitFeedbackImage.onload = () => { 
+            this.isHitFeedbackImageLoaded = true; 
+            console.log("Player hit feedback image loaded:", this.hitFeedbackImage.src);
+        };
+        this.hitFeedbackImage.onerror = () => { 
+            console.error("Error loading player hit feedback image:", this.hitFeedbackImage.src);
+        };
+        this.hitFeedbackImage.src = 'img/imgplayer_hit_feedback.png';
+        this.isShowingHitFeedback = false;
+        this.hitFeedbackEndTime = 0;
+        this.originalImageSrcBeforeHit = this.image.src;
     }
 
-    // Placeholder for image loading
-    // loadZhaogeImage() {
-    //     this.zhaogeImage = new Image();
-    //     this.zhaogeImage.src = 'path/to/zhaoge_photo.png'; // Replace with actual path
-    // }
+    regenerateHp(amount) {
+        this.hp += amount;
+        if (this.hp > this.maxHp) {
+            this.hp = this.maxHp;
+        }
+    }
+
+    setPlayerImageForLevel(level) {
+        let srcToLoad = this.levelImages[1];
+        if (level >= 15 && this.levelImages[15]) {
+            srcToLoad = this.levelImages[15];
+        } else if (level >= 10 && this.levelImages[10]) {
+            srcToLoad = this.levelImages[10];
+        } else if (level >= 5 && this.levelImages[5]) {
+            srcToLoad = this.levelImages[5];
+        }
+        if (!this.isShowingHitFeedback) {
+            if (this.image.src !== srcToLoad) { 
+                this.isImageLoaded = false; 
+                this.image.src = srcToLoad;
+                this.originalImageSrcBeforeHit = srcToLoad;
+            }
+        } else {
+            this.originalImageSrcBeforeHit = srcToLoad;
+        }
+    }
 
     handleInput(keys) {
         this.keys = keys;
     }
 
-    update(deltaTime) {
-        // Movement
+    update(deltaTime, game) {
         if (this.keys['ArrowLeft']) this.x -= this.speed;
         if (this.keys['ArrowRight']) this.x += this.speed;
         if (this.keys['ArrowUp']) this.y -= this.speed;
         if (this.keys['ArrowDown']) this.y += this.speed;
-
-        // Keep player within canvas bounds
         this.x = clamp(this.x, 0, CANVAS_WIDTH - this.width);
         this.y = clamp(this.y, 0, CANVAS_HEIGHT - this.height);
-
-        // Automatic shooting
-        const now = Date.now();
-        if (now - this.lastShotTime > this.fireRate) {
-            this.shoot();
-            this.lastShotTime = now;
-        }
-
-        // Update bullets
+        this.shoot();
         this.bullets = this.bullets.filter(bullet => bullet.isActive);
         this.bullets.forEach(bullet => bullet.update(deltaTime));
 
-        // Handle flashing when hit
-        if (this.isFlashing) {
-            if (now > this.flashEndTime) {
-                this.isFlashing = false;
-                this.flashVisible = true; // Ensure player is visible when flashing ends
-            } else {
-                if (now - this.lastFlashToggleTime > PLAYER_HIT_FLASH_INTERVAL) {
-                    this.flashVisible = !this.flashVisible;
-                    this.lastFlashToggleTime = now;
-                }
+        const now = Date.now();
+        if (this.isShowingHitFeedback && now > this.hitFeedbackEndTime) {
+            this.isShowingHitFeedback = false;
+            if (this.image.src !== this.originalImageSrcBeforeHit) {
+                this.isImageLoaded = false; 
+                this.image.src = this.originalImageSrcBeforeHit;
             }
         }
-        if (this.showZhaogeImageTime > 0 && now > this.showZhaogeImageTime) {
-            this.showZhaogeImageTime = 0;
+
+        // Check for overlap with boss for HP regeneration
+        if (game && game.boss && game.boss.isActive && checkCollision(this, game.boss)) {
+            const regenAmount = (PLAYER_HP_REGEN_OVERLAPPING_PER_SECOND * deltaTime);
+            this.regenerateHp(regenAmount);
+            // console.log("Player overlapping with boss, regenerating HP. Current HP:", this.hp);
         }
     }
 
     shoot() {
-        // Create a new bullet instance
-        // Bullet starts from the center-top of the player
-        const bulletX = this.x + this.width / 2 - PLAYER_BULLET_WIDTH / 2;
-        const bulletY = this.y - PLAYER_BULLET_HEIGHT; // Just above the player
-        const newBullet = new Bullet(bulletX, bulletY, PLAYER_BULLET_SPEED, this.atk, true);
-        this.bullets.push(newBullet);
-        // Play shoot sound (to be implemented in game.js or audio manager)
+        const now = Date.now();
+        if (now - this.lastShotTime < this.fireRate) return;
+        this.lastShotTime = now;
+
+        // Common bullet properties
+        const playerCenterX = this.x + this.width / 2;
+        const playerFrontY = this.y; // Bullets originate near the front of the player
+        const playerMidY = this.y + this.height / 2; // For side shots
+
+        let mainNumBullets = 1;
+        let mainIsScatter = false;
+        let mainBulletAngles = [-Math.PI / 2]; // Default: straight up
+        let mainBulletWidth = this.bulletWidth;
+        let mainBulletHeight = this.bulletHeight;
+        let mainBulletImageSrc = PLAYER_BULLET_IMAGE_SRC;
+        let currentBulletDamage = this.atk; // Base damage
+
+        if (this.level >= 15) { // This includes Level 20+ for the forward part
+            mainNumBullets = 6; // Forward 6-shot scatter
+            mainIsScatter = true;
+            const forwardSpreadDegrees = [-15, -9, -3, 3, 9, 15];
+            mainBulletAngles = forwardSpreadDegrees.map(deg => -Math.PI / 2 - (deg * Math.PI / 180));
+            mainBulletWidth = PLAYER_BULLET_WIDTH_LEVEL15;
+            mainBulletHeight = PLAYER_BULLET_HEIGHT_LEVEL15;
+            mainBulletImageSrc = PLAYER_BULLET_LARGE_IMAGE_SRC;
+            // currentBulletDamage remains this.atk (full damage for level 15+)
+        } else if (this.level >= 10) {
+            mainNumBullets = 3; // Changed from 5 to 3
+            currentBulletDamage = this.atk * 0.65; // 35% damage reduction
+        } else if (this.level >= 5) {
+            mainNumBullets = 2; // Changed from 3 to 2
+            currentBulletDamage = this.atk * 0.60; // 40% damage reduction
+        }
+        // For levels 1-4, mainNumBullets is 1, currentBulletDamage is this.atk (full)
+
+        const mainBulletSpacing = mainBulletWidth + 5;
+
+        // Fire main (forward) bullets
+        for (let i = 0; i < mainNumBullets; i++) {
+            let currentBulletX;
+            let currentAngle = -Math.PI / 2; // Default for non-scatter
+
+            if (mainIsScatter) {
+                currentBulletX = playerCenterX - mainBulletWidth / 2;
+                currentAngle = mainBulletAngles[i % mainBulletAngles.length];
+            } else {
+                // Centered multi-shot (not scatter)
+                currentBulletX = playerCenterX - mainBulletWidth / 2 + (i - Math.floor(mainNumBullets / 2)) * mainBulletSpacing;
+            }
+            
+            const newBullet = new Bullet(
+                currentBulletX,
+                playerFrontY - mainBulletHeight, // Adjust Y to be slightly in front
+                PLAYER_BULLET_SPEED,
+                currentBulletDamage, // Use potentially modified damage
+                true,
+                currentAngle,
+                mainBulletImageSrc,
+                mainBulletWidth,
+                mainBulletHeight,
+                null,
+                'white'
+            );
+            this.bullets.push(newBullet);
+        }
+
+        // Level 20+ additional side attacks
+        if (this.level >= 20) {
+            const sideNumBullets = 3;
+            const sideSpreadDegrees = [-10, 0, 10]; // Small spread for side shots
+            const sideBulletWidth = PLAYER_BULLET_WIDTH; // Standard bullets for side
+            const sideBulletHeight = PLAYER_BULLET_HEIGHT;
+            const sideBulletImageSrc = PLAYER_BULLET_IMAGE_SRC;
+
+            // Left side shots (angles around Math.PI)
+            const leftBaseAngle = Math.PI;
+            const leftBulletX = this.x - sideBulletWidth; // From left edge
+            const leftBulletAngles = sideSpreadDegrees.map(deg => leftBaseAngle - (deg * Math.PI / 180));
+
+            for (let i = 0; i < sideNumBullets; i++) {
+                const newSideBullet = new Bullet(
+                    leftBulletX,
+                    playerMidY - sideBulletHeight / 2,
+                    PLAYER_BULLET_SPEED,
+                    this.atk, // Side bullets at level 20 still do full damage
+                    true,
+                    leftBulletAngles[i],
+                    sideBulletImageSrc,
+                    sideBulletWidth,
+                    sideBulletHeight,
+                    null,
+                    'white'
+                );
+                this.bullets.push(newSideBullet);
+            }
+
+            // Right side shots (angles around 0 or 2*Math.PI)
+            const rightBaseAngle = 0;
+            const rightBulletX = this.x + this.width; // From right edge
+            const rightBulletAngles = sideSpreadDegrees.map(deg => rightBaseAngle - (deg * Math.PI / 180));
+
+            for (let i = 0; i < sideNumBullets; i++) {
+                const newSideBullet = new Bullet(
+                    rightBulletX,
+                    playerMidY - sideBulletHeight / 2,
+                    PLAYER_BULLET_SPEED,
+                    this.atk, // Side bullets at level 20 still do full damage
+                    true,
+                    rightBulletAngles[i],
+                    sideBulletImageSrc,
+                    sideBulletWidth,
+                    sideBulletHeight,
+                    null,
+                    'white'
+                );
+                this.bullets.push(newSideBullet);
+            }
+        }
     }
 
     takeDamage(amount) {
-        if (this.isFlashing) return; // Invulnerable while flashing
+        if (this.isShowingHitFeedback) return;
 
         this.hp -= amount;
-        this.hp = Math.max(0, this.hp); // HP cannot go below 0
+        this.hp = Math.max(0, this.hp);
 
-        // Start flashing
-        this.isFlashing = true;
-        this.flashVisible = false; // Start by being invisible
-        this.flashEndTime = Date.now() + PLAYER_HIT_FLASH_DURATION;
-        this.lastFlashToggleTime = Date.now();
+        console.log("Player hit! HP:", this.hp);
 
-        // Show "卓哥的小照片"
-        this.showZhaogeImageTime = Date.now() + 500; // Show for 0.5 seconds
-        console.log("Player hit! HP:", this.hp); // For debugging
+        if (this.isHitFeedbackImageLoaded && this.hitFeedbackImage.complete) {
+            this.image.src = this.hitFeedbackImage.src;
+            this.isImageLoaded = true;
+            this.isShowingHitFeedback = true;
+            this.hitFeedbackEndTime = Date.now() + 300;
+        } else {
+            console.warn("Hit feedback image not loaded, using fallback or no visual feedback for hit.");
+        }
 
         if (this.hp <= 0) {
-            this.isActive = false; // Player is destroyed
+            this.isActive = false; 
             console.log("Player destroyed!");
-            // Trigger game over (to be handled in game.js)
         }
     }
 
@@ -117,38 +264,53 @@ class Player extends GameObject {
 
     levelUp() {
         this.level++;
-        this.exp -= EXP_TO_LEVEL_UP; // Or this.exp = 0; if reset fully
+        this.exp -= EXP_TO_LEVEL_UP;
+        
         this.maxHp += LEVEL_UP_HP_BONUS;
-        this.hp += LEVEL_UP_HP_BONUS; // Heal and increase max HP
         this.atk += LEVEL_UP_ATK_BONUS;
-        this.justLeveledUp = true; // Set flag here
-        console.log(`LEVEL UP! Player is now Level ${this.level}. HP: ${this.hp}/${this.maxHp}, ATK: ${this.atk}`);
-        // Change player image/sprite (needs image loading and management)
+        this.updateSpeedForLevel();
+
+        // Restore HP: level * 5, capped by new maxHp
+        const hpToRestore = this.level * 5;
+        this.hp += hpToRestore;
+        if (this.hp > this.maxHp) {
+            this.hp = this.maxHp;
+        }
+        // An alternative: this.hp = Math.min(this.hp + hpToRestore, this.maxHp);
+        // And if you want full heal on level up: this.hp = this.maxHp;
+
+        this.justLeveledUp = true;
+
+        if (this.level >= 15) {
+            this.bulletWidth = PLAYER_BULLET_WIDTH_LEVEL15;
+            this.bulletHeight = PLAYER_BULLET_HEIGHT_LEVEL15;
+        }
+        this.setPlayerImageForLevel(this.level);
+
+        console.log(`LEVEL UP! Player is now Level ${this.level}. HP: ${this.hp}/${this.maxHp}, ATK: ${this.atk}, Speed: ${this.speed.toFixed(2)}`);
+    }
+
+    updateSpeedForLevel() {
+        if (this.level >= 20) {
+            this.speed = 8.0;
+        } else if (this.level >= 15) {
+            this.speed = 6.5;
+        } else if (this.level >= 10) {
+            this.speed = 6.0;
+        } else if (this.level >= 5) {
+            this.speed = 5.5;
+        } else {
+            this.speed = PLAYER_SPEED; // Initial speed (5)
+        }
     }
 
     draw(ctx) {
         if (!this.isActive) return;
 
-        // Draw bullets first (so they appear behind the player if necessary)
         this.bullets.forEach(bullet => bullet.draw(ctx));
 
-        if (this.flashVisible) {
-            // Placeholder: draw player as a rectangle
-            // In a real game, this would be ctx.drawImage for the player's sprite
-            ctx.fillStyle = this.color;
-            ctx.fillRect(this.x, this.y, this.width, this.height);
-        }
-
-        // Draw "卓哥的小照片" if active
-        if (this.showZhaogeImageTime > 0 && Date.now() < this.showZhaogeImageTime) {
-            // Placeholder for Zhaoge image. Replace with actual image drawing.
-            ctx.fillStyle = 'yellow'; // Placeholder color
-            ctx.font = '12px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText("卓哥!", this.x + this.width / 2, this.y - 10);
-            // if (this.zhaogeImage && this.zhaogeImage.complete) {
-            //     ctx.drawImage(this.zhaogeImage, this.x + this.width / 2 - imgWidth / 2, this.y - imgHeight - 5, imgWidth, imgHeight);
-            // }
+        if (this.isImageLoaded && this.image.complete && this.image.naturalHeight !== 0) {
+            ctx.drawImage(this.image, this.x, this.y, this.width, this.height);
         }
     }
 } 

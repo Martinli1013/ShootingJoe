@@ -3,52 +3,88 @@ class Bullet extends GameObject {
      * Creates a new Bullet.
      * @param {number} x - The x-coordinate.
      * @param {number} y - The y-coordinate.
-     * @param {number} speed - The speed of the bullet (positive for player, can be negative for enemy).
+     * @param {number} speed - The speed of the bullet.
      * @param {number} damage - The damage this bullet inflicts.
      * @param {boolean} isPlayerBullet - True if shot by player, false otherwise.
-     * @param {number} [angle=Math.PI / 2] - Angle of movement in radians (PI/2 is straight up).
-     *                                        Player bullets ignore this and always go up.
-     *                                        Boss bullets use this for varied patterns.
+     * @param {number} angle - Angle of movement in radians.
+     * @param {string} imageSrc - Path to the bullet image.
+     * @param {number} width - Width of the bullet.
+     * @param {number} height - Height of the bullet.
+     * @param {GameObject | null} target - Optional target for the bullet to track.
+     * @param {string | null} color - Fallback color for the bullet if image fails or is not specified.
      */
-    constructor(x, y, speed, damage, isPlayerBullet, angle = Math.PI / 2) {
-        let width, height, color;
-        if (isPlayerBullet) {
-            width = PLAYER_BULLET_WIDTH;
-            height = PLAYER_BULLET_HEIGHT;
-            color = PLAYER_BULLET_COLOR;
-        } else {
-            // Assuming boss bullets for now, can be more generic later
-            // This will be refined in the Enemy class when Boss shoots
-            width = BOSS_BULLET1_WIDTH; // Default, can be overridden by specific boss bullet types
-            height = BOSS_BULLET1_HEIGHT;
-            color = BOSS_BULLET1_COLOR;
-        }
-        super(x, y, width, height, color);
+    constructor(x, y, speed, damage, isPlayerBullet, angle, imageSrc, width, height, target = null, color = 'white') {
+        super(x, y, width, height, null); // Base GameObject color not used directly for drawing bullets with images
         this.speed = speed;
         this.damage = damage;
         this.isPlayerBullet = isPlayerBullet;
-        this.angle = angle; // Used by enemy bullets for direction
+        this.angle = angle; 
+        this.target = target; // Store the target
+        this.color = color; // Store the fallback color
 
-        // For bullets that don't move straight up/down
-        this.dx = Math.cos(this.angle - Math.PI / 2) * this.speed;
-        this.dy = Math.sin(this.angle - Math.PI / 2) * this.speed;
+        // Initial dx/dy based on angle, might be overridden by tracking
+        this.dx = Math.cos(this.angle) * this.speed;
+        this.dy = Math.sin(this.angle) * this.speed;
+
+        this.image = new Image();
+        this.isImageLoaded = false;
+        if (imageSrc) {
+            this.image.onload = () => {
+                this.isImageLoaded = true;
+            };
+            this.image.src = imageSrc;
+        } else {
+            // Fallback if no imageSrc provided, though we intend to always provide it
+            this.isImageLoaded = false; 
+            console.warn("Bullet created without imageSrc:", this);
+        }
     }
 
     update(deltaTime) {
-        if (this.isPlayerBullet) {
-            this.y -= this.speed; // Player bullets always go up
-        } else {
-            // Enemy bullets can move based on angle
-            this.y += this.dy; // Positive dy for downward movement in typical canvas coords
-            this.x += this.dx;
-        }
+        if (this.target && this.target.isActive) {
+            // Calculate direction towards target's center
+            const targetCenterX = this.target.x + this.target.width / 2;
+            const targetCenterY = this.target.y + this.target.height / 2;
+            const currentCenterX = this.x + this.width / 2;
+            const currentCenterY = this.y + this.height / 2;
 
-        // Deactivate bullet if it goes off-screen
+            const diffX = targetCenterX - currentCenterX;
+            const diffY = targetCenterY - currentCenterY;
+            const distance = Math.sqrt(diffX * diffX + diffY * diffY);
+
+            if (distance > 0) { // Avoid division by zero and update dx/dy
+                this.dx = (diffX / distance) * this.speed;
+                this.dy = (diffY / distance) * this.speed;
+            }
+            // Optionally, update this.angle if needed for rotation or other logic
+            // this.angle = Math.atan2(this.dy, this.dx);
+        }
+        // If no target, or target becomes inactive, it will continue with its last dx/dy,
+        // or you could revert to initial angle-based movement if preferred.
+        // For simplicity, current implementation continues last trajectory if target is lost.
+
+        this.y += this.dy;
+        this.x += this.dx;
+
         if (this.y < -this.height || this.y > CANVAS_HEIGHT || this.x < -this.width || this.x > CANVAS_WIDTH) {
             this.isActive = false;
         }
     }
 
-    // Draw method is inherited from GameObject if basic rectangle is fine.
-    // Can be overridden for custom bullet appearance (e.g., drawing a sprite).
+    draw(ctx) {
+        if (!this.isActive) return;
+
+        if (this.image.src && this.image.src !== "") { // Check if an imageSrc was intended
+            if (this.isImageLoaded && this.image.complete && this.image.naturalHeight !== 0) {
+                ctx.drawImage(this.image, this.x, this.y, this.width, this.height);
+            } else {
+                // If an imageSrc was provided, but image is not ready, do nothing to prevent flicker.
+                // This was the original desired behavior for image-based bullets.
+            }
+        } else {
+            // Only draw fallback color if no imageSrc was ever intended for this bullet.
+            ctx.fillStyle = this.color;
+            ctx.fillRect(this.x, this.y, this.width, this.height);
+        }
+    }
 } 

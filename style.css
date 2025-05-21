@@ -17,6 +17,7 @@ body {
 canvas {
     display: block; /* Removes a small space below the canvas */
     background-color: #000; /* Default black background for the game area */
+    /* Reverted: Removed explicit width/height and image-rendering */
 }
 
 #controls-info {
