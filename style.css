@@ -1,0 +1,24 @@
+body {
+    margin: 0;
+    background-color: #333;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: sans-serif;
+    color: #fff;
+}
+
+#game-container {
+    border: 2px solid #fff;
+}
+
+canvas {
+    display: block; /* Removes a small space below the canvas */
+    background-color: #000; /* Default black background for the game area */
+}
+
+#controls-info {
+    color: #ccc;
+} 
