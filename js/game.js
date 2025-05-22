@@ -24,11 +24,14 @@ class Game {
         // this.backgroundImage = new Image(); // Placeholder for background image
         // this.backgroundImage.src = 'path/to/your/pixel_art_background.png';
 
-        this.showLevelUpMessageUntil = 0;
-        this.showHpRestoredMessageUntil = 0; // New property for HP restored message
+        // this.showLevelUpMessageUntil = 0; // Obsolete
+        // this.showHpRestoredMessageUntil = 0; // Obsolete
 
         this.firstSpawnDelayed = false;
         this.initialSpawnDelayTime = 0;
+
+        this.items = []; // New: Array to hold active items
+        this.messages = []; // New: Array for displaying temporary messages
 
         this.initInputHandlers();
 
@@ -40,18 +43,24 @@ class Game {
     initInputHandlers() {
         window.addEventListener('keydown', (e) => {
             this.keys[e.key] = true;
-            // Reverted: Removed e.preventDefault() for arrow keys
-            // if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
-            // e.preventDefault();
-            // }
 
-            // Handle game state transitions on key press
             if (this.gameState === GAME_STATE_START_SCREEN && e.key === 'Enter') {
                 this.startGame();
             }
             if (this.gameState === GAME_STATE_GAME_OVER && e.key.toLowerCase() === 'r') {
                 this.resetGame();
                 this.startGame();
+            }
+            // Pause and Resume game
+            if (e.code === 'Space') { // Using e.code for better physical key mapping
+                e.preventDefault(); // Prevent space from scrolling the page
+                if (this.gameState === GAME_STATE_PLAYING) {
+                    this.gameState = GAME_STATE_PAUSED;
+                    console.log("Game Paused");
+                } else if (this.gameState === GAME_STATE_PAUSED) {
+                    this.gameState = GAME_STATE_PLAYING;
+                    console.log("Game Resumed");
+                }
             }
         });
         window.addEventListener('keyup', (e) => {
@@ -60,6 +69,7 @@ class Game {
     }
 
     resetGame() {
+        this.items = []; // Reset items array
         this.player = new Player(CANVAS_WIDTH / 2 - PLAYER_WIDTH / 2, CANVAS_HEIGHT - PLAYER_HEIGHT - 20, this.resourceManager);
         this.enemies = [];
         this.boss = null;
@@ -70,8 +80,8 @@ class Game {
         this.nextEnemySpawnInterval = getRandomInt(ENEMY_SPAWN_INTERVAL_MIN, ENEMY_SPAWN_INTERVAL_MAX);
         this.gameState = GAME_STATE_START_SCREEN;
         this.backgroundY = 0;
-        this.showLevelUpMessageUntil = 0;
-        this.showHpRestoredMessageUntil = 0; // Reset HP restored message
+        // this.showLevelUpMessageUntil = 0; // Obsolete
+        // this.showHpRestoredMessageUntil = 0; // Obsolete
         this.firstSpawnDelayed = false; // Reset initial spawn delay flag
         this.initialSpawnDelayTime = 0;
         // Reset other necessary game variables
@@ -80,9 +90,10 @@ class Game {
     startGame() {
         if (this.gameState === GAME_STATE_PLAYING) return;
         this.resetGame(); // Ensure a fresh state before starting
+        this.gameStartTime = Date.now(); // Start timer when game officially starts
         this.gameState = GAME_STATE_PLAYING;
         this.firstSpawnDelayed = true;
-        this.initialSpawnDelayTime = Date.now() + 1500; // Set 1.5 second delay for the first spawn
+        this.initialSpawnDelayTime = this.gameStartTime + 1500; // Set 1.5 second delay for the first spawn from game start
         console.log("Game Started! Initial enemy spawn delayed.");
     }
 
@@ -128,7 +139,7 @@ class Game {
             if (enemyTypeRoll < 0.80) { // 80% chance for Type 1 (previously 0.65)
                 newEnemy = new EnemyType1(x, y, this.player ? this.player.level : 1, this.resourceManager);
             } else { // 20% chance for Type 2 (previously 0.35)
-                newEnemy = new EnemyType2(x, y, this.resourceManager);
+                newEnemy = new EnemyType2(x, y, this.player ? this.player.level : 1, this.resourceManager);
             }
             this.enemies.push(newEnemy);
             this.lastEnemySpawnTime = now;
@@ -147,14 +158,44 @@ class Game {
         // Play boss spawn sound/warning
     }
 
+    displayMessage(text, x, y, duration) {
+        const message = {
+            text: text,
+            x: x,
+            y: y,
+            duration: duration, // in milliseconds
+            startTime: Date.now(),
+            font: 'bold 16px Arial', // Example font
+            color: 'yellow',         // Example color
+            isActive: true
+        };
+        this.messages.push(message);
+    }
+
     update(deltaTime) {
+        if (this.gameState === GAME_STATE_PAUSED) {
+            // When paused, we might want to update some things like UI animations or listen for unpause
+            // but we skip game logic updates.
+            return; // Skip all game logic updates if paused
+        }
+
         if (this.gameState !== GAME_STATE_PLAYING) {
             // Input for start/restart is handled in initInputHandlers
             return;
         }
 
-        // Check for Boss spawn based on player level
-        if (!this.bossSpawned && this.player && this.player.level >= 20) {
+        // Update messages
+        const now = Date.now();
+        this.messages.forEach(message => {
+            if (now - message.startTime > message.duration) {
+                message.isActive = false;
+            }
+            // Optional: Add fade out or movement logic here
+        });
+        this.messages = this.messages.filter(message => message.isActive);
+
+        // Check for Boss spawn based on TIME
+        if (!this.bossSpawned && (Date.now() - this.gameStartTime >= this.bossSpawnTimeDelay)) {
             this.spawnBoss();
         }
 
@@ -166,15 +207,21 @@ class Game {
             return;
         }
         if (this.player.justLeveledUp) {
-            this.showLevelUpMessageUntil = Date.now() + 2000; // Show for 2 seconds
-            this.showHpRestoredMessageUntil = Date.now() + 1000; // Show HP restored message for 1 second
+            // Display level up related messages using the new system
+            this.displayMessage(`LEVEL UP! Level ${this.player.level}`, this.player.x, this.player.y - 40, 2000);
+            const hpRestored = this.player.level * 5; // Assuming this is the logic.
+            this.displayMessage(`HP +${hpRestored}`, this.player.x, this.player.y - 60, 1500);
+            
             this.player.justLeveledUp = false; // Reset flag
             // Play level up sound here if desired
         }
 
         // Spawn and update enemies
         this.spawnEnemy();
-        this.enemies.forEach(enemy => enemy.update(deltaTime, this.player));
+        this.enemies.forEach(enemy => enemy.update(deltaTime, this.player, this));
+
+        // Update items
+        this.items.forEach(item => item.update(deltaTime));
 
         // Update text particles
         this.textParticles.forEach(particle => particle.update(deltaTime));
@@ -184,6 +231,7 @@ class Game {
 
         // Filter out inactive objects
         this.enemies = this.enemies.filter(enemy => enemy.isActive);
+        this.items = this.items.filter(item => item.isActive);
         this.player.bullets = this.player.bullets.filter(bullet => bullet.isActive);
         if (this.boss && this.boss.bullets) {
             this.boss.bullets = this.boss.bullets.filter(bullet => bullet.isActive);
@@ -211,10 +259,10 @@ class Game {
                 if (!enemy.isActive) return;
                 if (checkCollision(bullet, enemy)) {
                     bullet.isActive = false;
-                    const enemyWasActive = enemy.isActive; // Check before takeDamage
-                    const expGained = enemy.takeDamage(bullet.damage);
+                    const enemyWasActive = enemy.isActive;
+                    const expGained = enemy.takeDamage(bullet.damage, this);
                     
-                    if (enemyWasActive && !enemy.isActive && !enemy.isBoss) { // Enemy was just destroyed and is not boss
+                    if (enemyWasActive && !enemy.isActive && !enemy.isBoss) {
                         const particleX = enemy.x + enemy.width / 2;
                         const particleY = enemy.y + enemy.height / 2;
                         let deathText = "";
@@ -241,10 +289,35 @@ class Game {
                     }
 
                     if (expGained > 0) {
-                        this.player.gainExp(expGained);
+                        const leveledUp = this.player.gainExp(expGained);
+                        if (leveledUp) {
+                            // Spawn Large Wine item at the top-center of the screen
+                            const itemX = CANVAS_WIDTH / 2 - ALCOHOL_ITEM_WIDTH / 2;
+                            const itemY = -ALCOHOL_ITEM_HEIGHT; // Start just above the screen
+                            const wineDrop = new Item(
+                                itemX, 
+                                itemY, 
+                                ITEM_TYPE_ALCOHOL, 
+                                ITEM_SIZE_LARGE, 
+                                ALCOHOL_LARGE_IMG_SRC, 
+                                this.resourceManager, 
+                                ALCOHOL_ITEM_WIDTH, 
+                                ALCOHOL_ITEM_HEIGHT
+                            );
+                            this.items.push(wineDrop);
+                            console.log("Large wine dropped on level up!");
+                        }
                     }
                 }
             });
+        });
+
+        // Player vs Items
+        this.items.forEach(item => {
+            if (!item.isActive) return;
+            if (checkCollision(this.player, item)) {
+                item.applyEffect(this.player, this);
+            }
         });
 
         // Enemies vs Player (collision and enemy bullets)
@@ -289,12 +362,12 @@ class Game {
             const img = this.resourceManager.getImage(ENDING_SUCCESS_IMAGE_SRC);
             if (img && img.complete && img.naturalHeight !== 0) {
                 this.ctx.drawImage(img, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-            }
+            } else {this.ctx.fillStyle = '#001f3f'; this.ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT); this.drawStars();}
         } else if (this.gameState === GAME_STATE_GAME_OVER) {
             const img = this.resourceManager.getImage(ENDING_FAIL_IMAGE_SRC);
             if (img && img.complete && img.naturalHeight !== 0) {
                 this.ctx.drawImage(img, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-            }
+            } else {this.ctx.fillStyle = '#001f3f'; this.ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT); this.drawStars();}
         } else {
             // Default scrolling background for playing, start screen, or if ending images not loaded
             this.ctx.fillStyle = '#001f3f'; // Dark blue background
@@ -303,13 +376,31 @@ class Game {
         }
 
         // Draw game objects ONLY if playing
-        if (this.gameState === GAME_STATE_PLAYING) {
+        if (this.gameState === GAME_STATE_PLAYING || this.gameState === GAME_STATE_PAUSED) { // Draw items if playing or paused
+            this.items.forEach(item => item.draw(this.ctx)); // Draw items
             if(this.player) this.player.draw(this.ctx);
             this.enemies.forEach(enemy => enemy.draw(this.ctx));
             // Player bullets are drawn by player.draw(), boss bullets by boss.draw()
             // So we only need to draw text particles separately if they are managed by the game class
             this.textParticles.forEach(particle => particle.draw(this.ctx));
         }
+        
+        // Draw messages (on top of game objects, but below UI elements like HP bars if any are drawn later)
+        const now = Date.now();
+        this.messages.forEach(message => {
+            if (message.isActive) {
+                const elapsed = now - message.startTime;
+                const alpha = Math.max(0, 1 - (elapsed / message.duration)); // Fade out effect
+                
+                this.ctx.save();
+                this.ctx.globalAlpha = alpha;
+                this.ctx.font = message.font;
+                this.ctx.fillStyle = message.color;
+                this.ctx.textAlign = 'center';
+                this.ctx.fillText(message.text, message.x, message.y - (elapsed / 50)); // Text rises up
+                this.ctx.restore();
+            }
+        });
 
         // Draw UI on top of everything (UI class will handle what to show based on state)
         this.ui.draw(this.ctx);

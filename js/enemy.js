@@ -18,7 +18,7 @@ class Enemy extends GameObject {
     }
 
     // Basic downward movement, can be overridden by specific enemy types
-    update(deltaTime, player) {
+    update(deltaTime, player, game) {
         this.y += this.speed;
         // Deactivate if off-screen (bottom)
         if (this.y > CANVAS_HEIGHT) {
@@ -26,14 +26,20 @@ class Enemy extends GameObject {
         }
     }
 
-    takeDamage(amount) {
+    takeDamage(amount, game) {
         this.hp -= amount;
         if (this.hp <= 0) {
             this.isActive = false;
+            this.onDefeat(game); // Call onDefeat when destroyed
             // Return EXP value when destroyed
             return this.expValue;
         }
         return 0; // No EXP if not destroyed
+    }
+
+    // New method to handle logic upon defeat (e.g., item drops)
+    onDefeat(game) {
+        // Base implementation: do nothing. Subclasses will override for item drops.
     }
 
     draw(ctx) {
@@ -56,14 +62,34 @@ class EnemyType1 extends Enemy {
         const speedIncrease = (playerLevel - 1) * ENEMY1_SPEED_SCALING_PER_PLAYER_LEVEL;
         const currentSpeedMin = ENEMY1_SPEED_MIN + speedIncrease;
         const currentSpeedMax = ENEMY1_SPEED_MAX + speedIncrease;
-        
         const speed = getRandomFloat(currentSpeedMin, currentSpeedMax);
-        super(x, y, ENEMY1_WIDTH, ENEMY1_HEIGHT, ENEMY1_COLOR, ENEMY1_HP, speed, ENEMY1_COLLISION_DAMAGE, ENEMY1_EXP, 'img/imgenemy_girl.png', resourceManager);
-        // Add some horizontal movement tendency
+        
+        const calculatedHpForType1 = ENEMY1_HP + Math.max(0, playerLevel - 1) * ENEMY1_HP_GAIN_PER_LEVEL;
+
+        super(x, y, ENEMY1_WIDTH, ENEMY1_HEIGHT, ENEMY1_COLOR, calculatedHpForType1, speed, ENEMY1_COLLISION_DAMAGE, ENEMY1_EXP, 'img/imgenemy_girl.png', resourceManager);
         this.dx = getRandomFloat(-1, 1) * this.speed * 0.5; // Slower horizontal drift
     }
 
-    update(deltaTime, player) {
+    onDefeat(game) {
+        super.onDefeat(game);
+        const rand = Math.random();
+        let item = null;
+        const itemX = this.x + this.width / 2 - ALCOHOL_ITEM_WIDTH / 2; // Center based on alcohol size
+        const itemY = this.y + this.height / 2 - ALCOHOL_ITEM_HEIGHT / 2;
+
+        if (rand < ALCOHOL_LARGE_DROP_RATE) {
+            item = new Item(itemX, itemY, ITEM_TYPE_ALCOHOL, ITEM_SIZE_LARGE, ALCOHOL_LARGE_IMG_SRC, this.resourceManager, ALCOHOL_ITEM_WIDTH, ALCOHOL_ITEM_HEIGHT);
+        } else if (rand < ALCOHOL_LARGE_DROP_RATE + ALCOHOL_MEDIUM_DROP_RATE) {
+            item = new Item(itemX, itemY, ITEM_TYPE_ALCOHOL, ITEM_SIZE_MEDIUM, ALCOHOL_MEDIUM_IMG_SRC, this.resourceManager, ALCOHOL_ITEM_WIDTH, ALCOHOL_ITEM_HEIGHT);
+        } else if (rand < ALCOHOL_LARGE_DROP_RATE + ALCOHOL_MEDIUM_DROP_RATE + ALCOHOL_SMALL_DROP_RATE) {
+            item = new Item(itemX, itemY, ITEM_TYPE_ALCOHOL, ITEM_SIZE_SMALL, ALCOHOL_SMALL_IMG_SRC, this.resourceManager, ALCOHOL_ITEM_WIDTH, ALCOHOL_ITEM_HEIGHT);
+        }
+        if (item) {
+            game.items.push(item);
+        }
+    }
+
+    update(deltaTime, player, game) {
         this.y += this.speed; // Basic downward movement
         this.x += this.dx;   // Horizontal drift
 
@@ -80,28 +106,115 @@ class EnemyType1 extends Enemy {
 
 // Enemy Type 2: "熟女" - Tracks player slowly
 class EnemyType2 extends Enemy {
-    constructor(x, y, resourceManager) {
-        super(x, y, ENEMY2_WIDTH, ENEMY2_HEIGHT, ENEMY2_COLOR, ENEMY2_HP, ENEMY2_SPEED, ENEMY2_COLLISION_DAMAGE, ENEMY2_EXP, 'img/imgenemy_lady.png', resourceManager);
+    constructor(x, y, playerLevel = 1, resourceManager) {
+        const calculatedHpForType2 = ENEMY2_HP + Math.max(0, playerLevel - 1) * ENEMY2_HP_GAIN_PER_LEVEL;
+
+        super(x, y, ENEMY2_WIDTH, ENEMY2_HEIGHT, ENEMY2_COLOR, calculatedHpForType2, ENEMY2_SPEED, ENEMY2_COLLISION_DAMAGE, ENEMY2_EXP, 'img/imgenemy_lady.png', resourceManager);
+        this.targetSandwich = null;
+        this.sandwichDialogueTimer = 0;
+        this.currentSandwichDialogue = null;
+        this.sandwichDialogueDisplayUntil = 0;
     }
 
-    update(deltaTime, player) {
-        if (!player || !player.isActive) {
-            // If no player, just move down slowly
-            this.y += this.speed;
-        } else {
-            // Calculate direction towards player
+    onDefeat(game) {
+        super.onDefeat(game);
+        const rand = Math.random();
+        let item = null;
+        let itemWidth, itemHeight, itemX, itemY;
+
+        if (rand < SANDWICH_LARGE_DROP_RATE) {
+            itemWidth = SANDWICH_LARGE_WIDTH;
+            itemHeight = SANDWICH_LARGE_HEIGHT;
+            itemX = this.x + this.width / 2 - itemWidth / 2;
+            itemY = this.y + this.height / 2 - itemHeight / 2;
+            item = new Item(itemX, itemY, ITEM_TYPE_SANDWICH, ITEM_SIZE_LARGE, SANDWICH_LARGE_IMG_SRC, this.resourceManager, itemWidth, itemHeight);
+        } else if (rand < SANDWICH_LARGE_DROP_RATE + SANDWICH_MEDIUM_DROP_RATE) {
+            itemWidth = SANDWICH_MEDIUM_WIDTH;
+            itemHeight = SANDWICH_MEDIUM_HEIGHT;
+            itemX = this.x + this.width / 2 - itemWidth / 2;
+            itemY = this.y + this.height / 2 - itemHeight / 2;
+            item = new Item(itemX, itemY, ITEM_TYPE_SANDWICH, ITEM_SIZE_MEDIUM, SANDWICH_MEDIUM_IMG_SRC, this.resourceManager, itemWidth, itemHeight);
+        } else if (rand < SANDWICH_LARGE_DROP_RATE + SANDWICH_MEDIUM_DROP_RATE + SANDWICH_SMALL_DROP_RATE) {
+            itemWidth = SANDWICH_SMALL_WIDTH;
+            itemHeight = SANDWICH_SMALL_HEIGHT;
+            itemX = this.x + this.width / 2 - itemWidth / 2;
+            itemY = this.y + this.height / 2 - itemHeight / 2;
+            item = new Item(itemX, itemY, ITEM_TYPE_SANDWICH, ITEM_SIZE_SMALL, SANDWICH_SMALL_IMG_SRC, this.resourceManager, itemWidth, itemHeight);
+        }
+        if (item) {
+            game.items.push(item);
+        }
+    }
+
+    update(deltaTime, player, game) {
+        this.targetSandwich = null; // Reset target each frame
+        let closestSandwichDist = Infinity;
+        if (game.items) { // Ensure game.items is available
+            game.items.forEach(item => {
+                if (item.isActive && item.itemType === ITEM_TYPE_SANDWICH) {
+                    const dist = Math.sqrt(Math.pow(this.x - item.x, 2) + Math.pow(this.y - item.y, 2));
+                    if (dist < closestSandwichDist) {
+                        closestSandwichDist = dist;
+                        this.targetSandwich = item;
+                    }
+                }
+            });
+        }
+
+        if (this.targetSandwich) {
+            const diffX = this.targetSandwich.x + this.targetSandwich.width / 2 - (this.x + this.width / 2);
+            const diffY = this.targetSandwich.y + this.targetSandwich.height / 2 - (this.y + this.height / 2);
+            const distanceToTarget = Math.sqrt(diffX * diffX + diffY * diffY);
+
+            if (distanceToTarget > 0) {
+                this.x += (diffX / distanceToTarget) * this.speed;
+                this.y += (diffY / distanceToTarget) * this.speed;
+            }
+            // Dialogue logic for sandwich targeting
+            const now = Date.now();
+            if (this.currentSandwichDialogue && now > this.sandwichDialogueDisplayUntil) {
+                this.currentSandwichDialogue = null;
+            }
+            if (!this.currentSandwichDialogue && now > this.sandwichDialogueTimer) {
+                this.currentSandwichDialogue = ENEMY2_SANDWICH_DIALOGUE_TEXT;
+                this.sandwichDialogueDisplayUntil = now + ENEMY2_SANDWICH_DIALOGUE_DURATION;
+                this.sandwichDialogueTimer = now + ENEMY2_SANDWICH_DIALOGUE_INTERVAL;
+            }
+            // Check for collision with sandwich (Enemy2 picks it up)
+            if (checkCollision(this, this.targetSandwich)) {
+                this.targetSandwich.isActive = false; // Sandwich is picked up
+                this.targetSandwich = null; // Stop targeting
+                this.currentSandwichDialogue = null; // Stop talking about it
+            }
+
+        } else if (player && player.isActive) {
+            // Default behavior: track player if no sandwich target
+            this.currentSandwichDialogue = null; // No sandwich, no sandwich talk
             const diffX = player.x + player.width / 2 - (this.x + this.width / 2);
             const diffY = player.y + player.height / 2 - (this.y + this.height / 2);
             const distance = Math.sqrt(diffX * diffX + diffY * diffY);
-
-            if (distance > 0) { // Avoid division by zero
+            if (distance > 0) {
                 this.x += (diffX / distance) * this.speed;
                 this.y += (diffY / distance) * this.speed;
             }
+        } else {
+            // Fallback: just move down if no player and no sandwich
+            this.currentSandwichDialogue = null;
+            super.update(deltaTime, player, game); // Calls base movement (downwards)
         }
 
         if (this.y > CANVAS_HEIGHT) {
             this.isActive = false;
+        }
+    }
+    
+    draw(ctx) {
+        super.draw(ctx);
+        if (this.currentSandwichDialogue) {
+            ctx.font = BOSS_DIALOGUE_FONT; // Reuse boss dialogue font for consistency, or define a new one
+            ctx.fillStyle = BOSS_DIALOGUE_COLOR;
+            ctx.textAlign = 'center';
+            ctx.fillText(this.currentSandwichDialogue, this.x + this.width / 2, this.y - 10); // Display above enemy
         }
     }
 }
@@ -123,16 +236,16 @@ class BossEnemy extends Enemy {
         this.dialogueColor = BOSS_DIALOGUE_COLOR;
     }
 
-    update(deltaTime, player) {
+    update(deltaTime, player, game) {
         const now = Date.now();
         let currentPatternInterval = (this.attackPattern === 1) ? BOSS_FIRE_INTERVAL_PATTERN_1 : BOSS_FIRE_INTERVAL_PATTERN_2;
 
         if (now - this.lastAttackTime > currentPatternInterval) {
             if (this.attackPattern === 1) {
-                this.fireBigBullet(player);
+                this.fireBigBullet(player, game);
                 this.attackPattern = 2; // Switch to pattern 2
             } else {
-                this.fireSpreadPattern(); // No player target for spread pattern
+                this.fireSpreadPattern(game); // No player target for spread pattern
                 this.attackPattern = 1; // Switch back to pattern 1
             }
             this.lastAttackTime = now;
@@ -140,10 +253,10 @@ class BossEnemy extends Enemy {
 
         this.bullets = this.bullets.filter(bullet => bullet.isActive);
         this.bullets.forEach(bullet => bullet.update(deltaTime));
-        this.updateDialogue(player);
+        this.updateDialogue(player, game);
     }
 
-    fireBigBullet(player) {
+    fireBigBullet(player, game) {
         if (!player || !player.isActive) return;
         const bulletX = this.x + this.width / 2 - BOSS_BULLET1_WIDTH / 2;
         const bulletY = this.y + this.height; // Start from bottom of boss
@@ -164,11 +277,13 @@ class BossEnemy extends Enemy {
             BOSS_BULLET1_WIDTH, BOSS_BULLET1_HEIGHT,
             player, // target for tracking
             'purple', // Fallback color for Boss Bullet 1
-            this.resourceManager
+            this.resourceManager,
+            0, // visualRotation for boss bullet (can be 0 or updated in bullet update if it should face movement dir)
+            0.07 // turnRate for lazy tracking
         ));
     }
 
-    fireSpreadPattern() {
+    fireSpreadPattern(game) {
         const numBullets = BOSS_BULLET2_COUNT; // 10 bullets
         const spreadAngle = BOSS_BULLET2_SPREAD_ANGLE; // Math.PI (180 degrees)
         // Start shooting from 0 radians (right) to PI radians (left), effectively covering the bottom semi-circle.
@@ -208,40 +323,7 @@ class BossEnemy extends Enemy {
         }
     }
 
-    attack(player) { // This method seems to be a duplicate or older version. Will remove if not used by main update loop.
-        // The main update loop now calls fireBigBullet and fireSpreadPattern directly.
-        // Keeping it for now in case of subtle dependencies, but likely can be removed.
-        if (!player || !player.isActive) return;
-
-        this.attackPatternToggle = !this.attackPatternToggle;
-
-        if (this.attackPatternToggle) {
-            const bulletX = this.x + this.width / 2 - BOSS_BULLET1_WIDTH / 2;
-            const bulletY = this.y + this.height;
-            const angleToPlayer = Math.atan2(
-                player.y + player.height / 2 - (bulletY + BOSS_BULLET1_HEIGHT / 2),
-                player.x + player.width / 2 - (bulletX + BOSS_BULLET1_WIDTH / 2)
-            );
-            this.bullets.push(new Bullet(bulletX, bulletY, BOSS_BULLET1_SPEED, BOSS_BULLET1_DAMAGE, false, angleToPlayer, BOSS_BULLET1_IMAGE_SRC, BOSS_BULLET1_WIDTH, BOSS_BULLET1_HEIGHT, player, 'purple', this.resourceManager));
-        } else {
-            const baseAngleToPlayer = Math.atan2(
-                player.y + player.height / 2 - (this.y + this.height + BOSS_BULLET2_HEIGHT / 2),
-                player.x + player.width / 2 - (this.x + this.width / 2 - BOSS_BULLET2_WIDTH / 2)
-            );
-            const totalSpread = BOSS_BULLET2_SPREAD_ANGLE; // This would use the new 180 degree constant
-            const angleStepOld = BOSS_BULLET2_COUNT > 1 ? totalSpread / (BOSS_BULLET2_COUNT - 1) : 0;
-            const startAngleOld = baseAngleToPlayer - totalSpread / 2;
-
-            for (let i = 0; i < BOSS_BULLET2_COUNT; i++) {
-                const bulletX = this.x + this.width / 2 - BOSS_BULLET2_WIDTH / 2;
-                const bulletY = this.y + this.height;
-                const currentAngleOld = startAngleOld + (i * angleStepOld);
-                this.bullets.push(new Bullet(bulletX, bulletY, BOSS_BULLET2_SPEED, BOSS_BULLET2_DAMAGE, false, currentAngleOld, BOSS_BULLET2_IMAGE_SRC, BOSS_BULLET2_WIDTH, BOSS_BULLET2_HEIGHT, null, BOSS_BULLET2_COLOR, this.resourceManager)); // Now null target
-            }
-        }
-    }
-
-    takeDamage(amount) {
+    takeDamage(amount, game) {
         this.hp -= amount;
         console.log(`Boss HP: ${this.hp}/${BOSS_INITIAL_HP}`);
         if (this.hp <= 0) {
@@ -270,7 +352,7 @@ class BossEnemy extends Enemy {
         }
     }
 
-    updateDialogue(player) {
+    updateDialogue(player, game) {
         const now = Date.now();
 
         // Clear dialogue if its time is up

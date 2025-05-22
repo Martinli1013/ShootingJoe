@@ -13,6 +13,10 @@ class Player extends GameObject {
         this.lastShotTime = 0;
         this.fireRate = PLAYER_FIRE_RATE;
 
+        this.weaponLevel = 1; // Start at weapon level 1
+        // mainBulletCount will be derived from weaponLevel in shoot() or by upgradeWeapon()
+        // this.mainBulletCount = 1; // Removed, weaponLevel is the source of truth
+
         this.bulletWidth = PLAYER_BULLET_WIDTH;
         this.bulletHeight = PLAYER_BULLET_HEIGHT;
 
@@ -26,17 +30,35 @@ class Player extends GameObject {
             10: 'img/imgplayer_level10.png',
             15: 'img/imgplayer_level15.png'
         };
-        this.image = this.resourceManager.getImage(this.levelImages[1]); // Default image
+        this.image = this.resourceManager.getImage(this.levelImages[1]);
 
         this.hitFeedbackImageSrc = 'img/imgplayer_hit_feedback.png';
-        // this.hitFeedbackImage = this.resourceManager.getImage(this.hitFeedbackImageSrc); // Get preloaded image
-
         this.isShowingHitFeedback = false;
         this.hitFeedbackEndTime = 0;
         this.originalImageSrcBeforeHit = this.levelImages[1];
     }
 
-    regenerateHp(amount) {
+    increaseAtk(amount) {
+        this.atk += amount;
+        console.log(`Player ATK increased by ${amount}. New ATK: ${this.atk}`);
+    }
+
+    increaseHp(amount) {
+        this.maxHp += amount;
+        this.hp += amount;
+        if (this.hp > this.maxHp) {
+            this.hp = this.maxHp;
+        }
+        console.log(`Player HP and MaxHP increased by ${amount}. Current HP: ${this.hp}/${this.maxHp}`);
+    }
+
+    // Renamed from addBullet and logic changed to increment weaponLevel
+    upgradeWeapon() { 
+        this.weaponLevel++;
+        console.log(`Player weapon upgraded. New Weapon Level: ${this.weaponLevel}`);
+    }
+
+    regenerateHp(amount) { // Existing method for overlap healing, only current HP
         this.hp += amount;
         if (this.hp > this.maxHp) {
             this.hp = this.maxHp;
@@ -97,121 +119,74 @@ class Player extends GameObject {
         if (now - this.lastShotTime < this.fireRate) return;
         this.lastShotTime = now;
 
-        // Common bullet properties
         const playerCenterX = this.x + this.width / 2;
-        const playerFrontY = this.y; // Bullets originate near the front of the player
-        const playerMidY = this.y + this.height / 2; // For side shots
+        const playerFrontY = this.y;
+        const playerMidY = this.y + this.height / 2;
 
-        let mainNumBullets = 1;
-        let mainIsScatter = false;
-        let mainBulletAngles = [-Math.PI / 2]; // Default: straight up
-        let mainBulletWidth = this.bulletWidth;
-        let mainBulletHeight = this.bulletHeight;
-        let mainBulletImageSrc = PLAYER_BULLET_IMAGE_SRC;
-        let currentBulletDamage = this.atk; // Base damage
+        const baseBulletDamage = this.atk;
+        let numForwardBullets = 0;
+        let numSideBulletsPerSide = 0;
+        let numRearBullets = 0;
 
-        if (this.level >= 15) { // This includes Level 20+ for the forward part
-            mainNumBullets = 6; // Forward 6-shot scatter
-            mainIsScatter = true;
-            const forwardSpreadDegrees = [-15, -9, -3, 3, 9, 15];
-            mainBulletAngles = forwardSpreadDegrees.map(deg => -Math.PI / 2 - (deg * Math.PI / 180));
-            mainBulletWidth = PLAYER_BULLET_WIDTH_LEVEL15;
-            mainBulletHeight = PLAYER_BULLET_HEIGHT_LEVEL15;
-            mainBulletImageSrc = PLAYER_BULLET_LARGE_IMAGE_SRC;
-            // currentBulletDamage remains this.atk (full damage for level 15+)
-        } else if (this.level >= 10) {
-            mainNumBullets = 3; // Changed from 5 to 3
-            currentBulletDamage = this.atk * 0.65; // 35% damage reduction
-        } else if (this.level >= 5) {
-            mainNumBullets = 2; // Changed from 3 to 2
-            currentBulletDamage = this.atk * 0.60; // 40% damage reduction
-        }
-        // For levels 1-4, mainNumBullets is 1, currentBulletDamage is this.atk (full)
-
-        const mainBulletSpacing = mainBulletWidth + 5;
-
-        // Fire main (forward) bullets
-        for (let i = 0; i < mainNumBullets; i++) {
-            let currentBulletX;
-            let currentAngle = -Math.PI / 2; // Default for non-scatter
-
-            if (mainIsScatter) {
-                currentBulletX = playerCenterX - mainBulletWidth / 2;
-                currentAngle = mainBulletAngles[i % mainBulletAngles.length];
-            } else {
-                // Centered multi-shot (not scatter)
-                currentBulletX = playerCenterX - mainBulletWidth / 2 + (i - Math.floor(mainNumBullets / 2)) * mainBulletSpacing;
-            }
-            
-            const newBullet = new Bullet(
-                currentBulletX,
-                playerFrontY - mainBulletHeight, // Adjust Y to be slightly in front
-                PLAYER_BULLET_SPEED,
-                currentBulletDamage, // Use potentially modified damage
-                true,
-                currentAngle,
-                mainBulletImageSrc,
-                mainBulletWidth,
-                mainBulletHeight,
-                null,
-                'white',
-                this.resourceManager
-            );
-            this.bullets.push(newBullet);
+        // Determine bullet counts based on weaponLevel
+        if (this.weaponLevel <= 5) {
+            numForwardBullets = this.weaponLevel;
+        } else if (this.weaponLevel <= 10) {
+            numForwardBullets = 5;
+            numSideBulletsPerSide = this.weaponLevel - 5;
+        } else { // weaponLevel > 10
+            numForwardBullets = 5;
+            numSideBulletsPerSide = 5;
+            numRearBullets = Math.min(5, this.weaponLevel - 10); // Cap rear bullets at 5
         }
 
-        // Level 20+ additional side attacks
-        if (this.level >= 20) {
-            const sideNumBullets = 3;
-            const sideSpreadDegrees = [-10, 0, 10]; // Small spread for side shots
-            const sideBulletWidth = PLAYER_BULLET_WIDTH; // Standard bullets for side
-            const sideBulletHeight = PLAYER_BULLET_HEIGHT;
-            const sideBulletImageSrc = PLAYER_BULLET_IMAGE_SRC;
+        let forwardBulletEffectiveDamage = baseBulletDamage;
+        if (numForwardBullets > 1 && this.weaponLevel <= 10) { // Damage reduction for multiple forward bullets only applies before rear bullets or if explicitly stated
+             forwardBulletEffectiveDamage = baseBulletDamage * 0.60;
+        }
+        // As per rule: "前方和左右侧的子弹攻击力将不再随着武器等级的提升而减少" when rear bullets appear (WL > 10)
+        // This implies the 0.60 modifier might not apply or is fixed once WL > 10.
+        // For simplicity, if WL > 10, let's assume the 0.60 modifier has already been incorporated if numForwardBullets > 1.
+        // The statement "不再减少" can be interpreted that the *base* for this 0.60 modifier (this.atk) doesn't get further penalized.
+        // So, if numForwardBullets > 1, it's always 0.60 * atk. If 1, it's 1.0 * atk.
+        if (numForwardBullets === 1) forwardBulletEffectiveDamage = baseBulletDamage; // Ensure single forward bullet does full damage
 
-            // Left side shots (angles around Math.PI)
-            const leftBaseAngle = Math.PI;
-            const leftBulletX = this.x - sideBulletWidth; // From left edge
-            const leftBulletAngles = sideSpreadDegrees.map(deg => leftBaseAngle - (deg * Math.PI / 180));
+        const sideBulletEffectiveDamage = baseBulletDamage * 0.60; // Side bullets are always multiple if they exist
+        const rearBulletEffectiveDamage = baseBulletDamage * 0.60; // Rear bullets are always multiple if they exist
 
-            for (let i = 0; i < sideNumBullets; i++) {
-                const newSideBullet = new Bullet(
-                    leftBulletX,
-                    playerMidY - sideBulletHeight / 2,
-                    PLAYER_BULLET_SPEED,
-                    this.atk, // Side bullets at level 20 still do full damage
-                    true,
-                    leftBulletAngles[i],
-                    sideBulletImageSrc,
-                    sideBulletWidth,
-                    sideBulletHeight,
-                    null,
-                    'white',
-                    this.resourceManager
-                );
-                this.bullets.push(newSideBullet);
+        const bulletImg = PLAYER_BULLET_IMAGE_SRC;
+        const bulletW = PLAYER_BULLET_WIDTH;
+        const bulletH = PLAYER_BULLET_HEIGHT;
+        const bulletSpeed = PLAYER_BULLET_SPEED;
+
+        // Fire Forward Bullets
+        if (numForwardBullets > 0) {
+            const totalWidthOfForwardBullets = numForwardBullets * bulletW + (numForwardBullets - 1) * 5;
+            const startXForward = playerCenterX - totalWidthOfForwardBullets / 2;
+            for (let i = 0; i < numForwardBullets; i++) {
+                const bulletX = startXForward + i * (bulletW + 5);
+                this.bullets.push(new Bullet(bulletX, playerFrontY - bulletH, bulletSpeed, forwardBulletEffectiveDamage, true, -Math.PI / 2, bulletImg, bulletW, bulletH, null, 'white', this.resourceManager, 0));
             }
+        }
 
-            // Right side shots (angles around 0 or 2*Math.PI)
-            const rightBaseAngle = 0;
-            const rightBulletX = this.x + this.width; // From right edge
-            const rightBulletAngles = sideSpreadDegrees.map(deg => rightBaseAngle - (deg * Math.PI / 180));
+        // Fire Side Bullets
+        if (numSideBulletsPerSide > 0) {
+            for (let i = 0; i < numSideBulletsPerSide; i++) {
+                const offsetY = (numSideBulletsPerSide > 1) ? (i - (numSideBulletsPerSide -1) / 2) * (bulletH + 2) : 0;
+                // Left side bullets
+                this.bullets.push(new Bullet(this.x - bulletW, playerMidY - bulletH/2 + offsetY, bulletSpeed, sideBulletEffectiveDamage, true, Math.PI, bulletImg, bulletW, bulletH, null, 'white', this.resourceManager, -Math.PI / 2));
+                // Right side bullets
+                this.bullets.push(new Bullet(this.x + this.width, playerMidY - bulletH/2 + offsetY, bulletSpeed, sideBulletEffectiveDamage, true, 0, bulletImg, bulletW, bulletH, null, 'white', this.resourceManager, Math.PI / 2));
+            }
+        }
 
-            for (let i = 0; i < sideNumBullets; i++) {
-                const newSideBullet = new Bullet(
-                    rightBulletX,
-                    playerMidY - sideBulletHeight / 2,
-                    PLAYER_BULLET_SPEED,
-                    this.atk, // Side bullets at level 20 still do full damage
-                    true,
-                    rightBulletAngles[i],
-                    sideBulletImageSrc,
-                    sideBulletWidth,
-                    sideBulletHeight,
-                    null,
-                    'white',
-                    this.resourceManager
-                );
-                this.bullets.push(newSideBullet);
+        // Fire Rear Bullets
+        if (numRearBullets > 0) {
+            const totalWidthOfRearBullets = numRearBullets * bulletW + (numRearBullets - 1) * 5;
+            const startXRear = playerCenterX - totalWidthOfRearBullets / 2;
+            for (let i = 0; i < numRearBullets; i++) {
+                const bulletX = startXRear + i * (bulletW + 5);
+                this.bullets.push(new Bullet(bulletX, this.y + this.height, bulletSpeed, rearBulletEffectiveDamage, true, Math.PI / 2, bulletImg, bulletW, bulletH, null, 'white', this.resourceManager, Math.PI));
             }
         }
     }
@@ -239,40 +214,38 @@ class Player extends GameObject {
         }
     }
 
-    gainExp(amount) {
-        this.exp += amount;
-        console.log(`Player gained ${amount} EXP. Total EXP: ${this.exp}`);
-        if (this.exp >= EXP_TO_LEVEL_UP) {
-            this.levelUp();
-        }
-    }
-
     levelUp() {
         this.level++;
         this.exp -= EXP_TO_LEVEL_UP;
-        
-        this.maxHp += LEVEL_UP_HP_BONUS;
-        this.atk += LEVEL_UP_ATK_BONUS;
         this.updateSpeedForLevel();
-
-        // Restore HP: level * 5, capped by new maxHp
         const hpToRestore = this.level * 5;
         this.hp += hpToRestore;
         if (this.hp > this.maxHp) {
             this.hp = this.maxHp;
         }
-        // An alternative: this.hp = Math.min(this.hp + hpToRestore, this.maxHp);
-        // And if you want full heal on level up: this.hp = this.maxHp;
-
         this.justLeveledUp = true;
-
-        if (this.level >= 15) {
-            this.bulletWidth = PLAYER_BULLET_WIDTH_LEVEL15;
-            this.bulletHeight = PLAYER_BULLET_HEIGHT_LEVEL15;
-        }
         this.setPlayerImageForLevel(this.level);
+        console.log(`LEVEL UP! Player is now Level ${this.level}. HP: ${this.hp}/${this.maxHp}, ATK: ${this.atk}, Speed: ${this.speed.toFixed(2)}, WeaponLvl: ${this.weaponLevel}`);
 
-        console.log(`LEVEL UP! Player is now Level ${this.level}. HP: ${this.hp}/${this.maxHp}, ATK: ${this.atk}, Speed: ${this.speed.toFixed(2)}`);
+        // Spawn Large Wine item
+        // The 'game' instance is needed here. Assuming it's passed to levelUp or accessible via this.game.
+        // If Player doesn't have direct access to game.items, this needs to be handled differently,
+        // e.g., by returning a flag or a new item from levelUp and having Game.js handle the spawn.
+        // For now, let's assume Player.levelUp() is called from Game.update() which can then handle the item.
+        // For direct spawn here, we would need player.game.items.push(...)
+    }
+
+    gainExp(amount) {
+        // if (this.gameState === GAME_STATE_LEVEL_CLEAR) return; // This check should be in Game.js
+        this.exp += amount;
+        // console.log(`Player gained ${amount} EXP. Total EXP: ${this.exp}`);
+        let leveledUpThisCycle = false;
+        while (this.exp >= EXP_TO_LEVEL_UP) {
+            this.levelUp(); // This will set this.justLeveledUp = true
+            leveledUpThisCycle = true;
+        }
+        // Return a flag if a level up occurred, so Game.js can spawn the item
+        return leveledUpThisCycle;
     }
 
     updateSpeedForLevel() {

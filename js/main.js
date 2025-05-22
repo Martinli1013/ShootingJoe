@@ -16,8 +16,13 @@ const imageList = [
     'img/boss_bullet_type1.png',
     'img/boss_bullet_type2.png',
     'img/ending_success.png',
-    'img/ending_fail.png'
-    // ...如有其它图片请补充
+    'img/ending_fail.png',
+    'img/wine_small.png',
+    'img/wine_medium.png',
+    'img/wine_large.png',
+    'img/sandwich_small.png',
+    'img/sandwich_medium.png',
+    'img/sandwich_large.png'
 ];
 
 const resourceManager = new ResourceManager();

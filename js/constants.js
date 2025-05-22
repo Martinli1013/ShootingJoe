@@ -30,7 +30,7 @@ const PLAYER_FIRE_RATE = 200; // 5 bullets per second
 
 // Enemy constants
 // Adjusted for more enemies and faster speeds
-const ENEMY_SPAWN_INTERVAL_MIN = 100; // ms (previously 250, then 500)
+const ENEMY_SPAWN_INTERVAL_MIN = 200 // ms (previously 250, then 500)
 const ENEMY_SPAWN_INTERVAL_MAX = 300; // ms (previously 750, then 1500)
 
 // Enemy spawn rate increase after player reaches level 15
@@ -45,13 +45,26 @@ const ENEMY1_COLOR = 'rgba(255, 105, 180, 0.8)'; // Pink-ish
 const ENEMY1_SPEED_MIN = 2.0;
 const ENEMY1_SPEED_MAX = 3.5;
 const ENEMY1_SPEED_SCALING_PER_PLAYER_LEVEL = 0.05; // New constant
-const ENEMY1_HP = 301;
+const ENEMY1_HP = 301; // Base HP at player level 1
+const ENEMY1_HP_GAIN_PER_LEVEL = 8; // Additional HP per player level after level 1
 const ENEMY1_COLLISION_DAMAGE = 15;
-const ENEMY1_EXP = 10;
+const ENEMY1_EXP = 5; // Reduced from 10
 
 const ENEMY_TYPE_1_DEATH_TEXTS = [
-    "无册那麻痹啊",
+    "你们不上班吗",
     "卓哥卓哥",
+    "起飞",
+    "差点意思",
+    "躲歪了",
+    "别挣扎了",
+    "冲啊",
+    "买到ST啦",
+    "卓哥可以的",
+    "啥情况",
+    "?",
+    "隔了困救我",
+    "秀",
+    "含泪下线",
     "是那个男人",
     "怎么说",
     "噢哟哟",
@@ -68,9 +81,10 @@ const ENEMY2_WIDTH = 45;
 const ENEMY2_HEIGHT = 45;
 const ENEMY2_COLOR = 'rgba(220, 20, 60, 0.8)'; // Crimson-ish
 const ENEMY2_SPEED = 2.5;
-const ENEMY2_HP = 201;
+const ENEMY2_HP = 201; // Base HP at player level 1
+const ENEMY2_HP_GAIN_PER_LEVEL = 12; // Additional HP per player level after level 1
 const ENEMY2_COLLISION_DAMAGE = 20;
-const ENEMY2_EXP = 15;
+const ENEMY2_EXP = 8; // Reduced from 15
 
 // Boss ("蜘蛛精") constants
 const BOSS_HP = 250000;
@@ -91,8 +105,8 @@ const BOSS_BULLET1_IMAGE_SRC = 'img/boss_bullet_type1.png'; // Updated to new im
 
 // Boss Bullet Type 2 (Yellow, Non-Tracking, Spread - from existing BOSS_FIRE_INTERVAL_PATTERN_2)
 const BOSS_BULLET2_SPEED = 5; // Faster than bullet type 1
-const BOSS_BULLET2_WIDTH = 25; // Increased from 20
-const BOSS_BULLET2_HEIGHT = 25; // Increased from 20
+const BOSS_BULLET2_WIDTH = 35; // Increased from 25
+const BOSS_BULLET2_HEIGHT = 35; // Increased from 25
 const BOSS_BULLET2_DAMAGE = 15; // Was BOSS_BULLET_SMALL_DAMAGE
 const BOSS_BULLET2_IMAGE_SRC = 'img/boss_bullet_type2.png'; // Updated to new image (was boss_bullet_yellow.png)
 const BOSS_BULLET2_COLOR = 'yellow'; // Fallback color, less relevant if image loads
@@ -131,13 +145,13 @@ const BOSS_DIALOGUE_NORMAL = [
 const BOSS_DIALOGUE_LOW_HP = [
     "吗的菊花一紧",
     "这算恐怖袭击伐",
-    "因小失大",
     "哪来的屌丝",
     "卓哥还在动"
 ];
 const BOSS_DIALOGUE_OVERLAPPING = [
     "卓哥搞毛",
     "你在这里干嘛啊",
+    "这个位置对了",
     "卧槽爽",
     "有点爽",
     "哦哟哟"
@@ -185,6 +199,7 @@ const GAME_STATE_PLAYING = 'playing';
 const GAME_STATE_GAME_OVER = 'game_over';
 const GAME_STATE_LEVEL_CLEAR = 'level_clear';
 const GAME_STATE_START_SCREEN = 'start_screen'; // Optional: for a start screen
+const GAME_STATE_PAUSED = 'paused'; // New state for paused game
 
 // Leveling
 const EXP_TO_LEVEL_UP = 100;
@@ -205,6 +220,62 @@ const ENEMY_TYPE_2_SPECIAL_DEATH_TEXTS = [
     "是谁攻击本党员",
     "有东西嗷"
 ]; 
+
+// Item Constants
+// const ITEM_WIDTH = 30; // Will be replaced by specific sizes
+// const ITEM_HEIGHT = 30; // Will be replaced by specific sizes
+const ITEM_FALL_SPEED = ENEMY2_SPEED * 0.5;
+
+const ALCOHOL_ITEM_WIDTH = 50;
+const ALCOHOL_ITEM_HEIGHT = 50;
+
+const SANDWICH_SMALL_WIDTH = 30;
+const SANDWICH_SMALL_HEIGHT = 30;
+const SANDWICH_MEDIUM_WIDTH = 35;
+const SANDWICH_MEDIUM_HEIGHT = 35;
+const SANDWICH_LARGE_WIDTH = 45;
+const SANDWICH_LARGE_HEIGHT = 45;
+
+// Item Types
+const ITEM_TYPE_ALCOHOL = 'alcohol';
+const ITEM_TYPE_SANDWICH = 'sandwich';
+
+// Item Sizes
+const ITEM_SIZE_SMALL = 'small';
+const ITEM_SIZE_MEDIUM = 'medium';
+const ITEM_SIZE_LARGE = 'large';
+
+// Alcohol Item Properties (Enemy 1 - 奶哥 drops)
+const ALCOHOL_SMALL_DROP_RATE = 0.12; // Reduced from 0.20 (20%)
+const ALCOHOL_SMALL_ATK_BONUS = 5;
+const ALCOHOL_SMALL_IMG_SRC = 'img/wine_small.png';
+
+const ALCOHOL_MEDIUM_DROP_RATE = 0.06; // Reduced from 0.10 (10%)
+const ALCOHOL_MEDIUM_ATK_BONUS = 8;
+const ALCOHOL_MEDIUM_IMG_SRC = 'img/wine_medium.png';
+
+const ALCOHOL_LARGE_DROP_RATE = 0.03; // Reduced from 0.05 (5%)
+const ALCOHOL_LARGE_BULLET_BONUS = 1; // Adds 1 extra bullet
+const ALCOHOL_LARGE_IMG_SRC = 'img/wine_large.png';
+// Bullet damage modifier: ATK * numMainBullets * 0.60 for each bullet if numMainBullets > 1
+
+// Sandwich Item Properties (Enemy 2 - 阿王 drops)
+const SANDWICH_SMALL_DROP_RATE = 0.15; // Reduced from 0.25 (25%)
+const SANDWICH_SMALL_HP_BONUS = 3;
+const SANDWICH_SMALL_IMG_SRC = 'img/sandwich_small.png';
+
+const SANDWICH_MEDIUM_DROP_RATE = 0.08; // Reduced from 0.15 (15%)
+const SANDWICH_MEDIUM_HP_BONUS = 6;
+const SANDWICH_MEDIUM_IMG_SRC = 'img/sandwich_medium.png';
+
+const SANDWICH_LARGE_DROP_RATE = 0.05; // Reduced from 0.10 (10%)
+const SANDWICH_LARGE_HP_BONUS = 12;
+const SANDWICH_LARGE_IMG_SRC = 'img/sandwich_large.png';
+
+// Enemy 2 (阿王) Sandwich-related Dialogue
+const ENEMY2_SANDWICH_DIALOGUE_TEXT = "我三明治掉了";
+const ENEMY2_SANDWICH_DIALOGUE_INTERVAL = 2000; // ms (2 seconds)
+const ENEMY2_SANDWICH_DIALOGUE_DURATION = 1500; // ms (1.5 seconds)
 
 // Boss Enemy
 // ... existing code ... 

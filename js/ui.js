@@ -76,6 +76,28 @@ class UI {
             ctx.strokeRect(bossHpBarX, bossHpBarY, bossHpBarWidth, BOSS_UI_HP_BAR_HEIGHT);
         }
 
+        // Draw Boss Spawn Timer if game is playing and boss has not spawned
+        if (this.game.gameState === GAME_STATE_PLAYING && !this.game.bossSpawned && this.game.gameStartTime > 0) {
+            const timeUntilBoss = Math.max(0, this.game.bossSpawnTimeDelay - (Date.now() - this.game.gameStartTime));
+            const minutes = Math.floor(timeUntilBoss / 60000);
+            const seconds = Math.floor((timeUntilBoss % 60000) / 1000);
+            const timerText = `家卫正在赶来: ${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+            const timerBarWidth = CANVAS_WIDTH * 0.4;
+            const timerBarHeight = 20;
+            const timerBarX = CANVAS_WIDTH / 2 - timerBarWidth / 2;
+            const timerBarY = 15; // Position near the top
+
+            ctx.fillStyle = 'rgba(100, 100, 100, 0.7)'; // Semi-transparent gray bar
+            ctx.fillRect(timerBarX, timerBarY, timerBarWidth, timerBarHeight);
+
+            ctx.font = 'bold 16px Arial';
+            ctx.fillStyle = 'white';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(timerText, CANVAS_WIDTH / 2, timerBarY + timerBarHeight / 2);
+        }
+
         // Draw Game State Messages (Game Over, Level Clear, Start Screen, Level Up)
         ctx.textAlign = 'center';
         ctx.fillStyle = UI_TEXT_COLOR;
@@ -93,25 +115,16 @@ class UI {
              ctx.fillText('ShootingJoe', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 60);
              ctx.font = '24px Arial';
              ctx.fillText('按 ENTER 键开始游戏', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 20);
-        }
+        } else if (this.game.gameState === GAME_STATE_PAUSED) {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'; // Semi-transparent black overlay
+            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-        // Draw Level Up message if active
-        if (this.game.showLevelUpMessageUntil > Date.now()) {
-            ctx.font = 'bold 30px Arial';
-            ctx.fillStyle = 'yellow';
+            ctx.font = '48px Arial';
+            ctx.fillStyle = 'white';
             ctx.textAlign = 'center';
-            ctx.fillText(`等级提升! LV ${this.game.player.level}!`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 3);
-        }
-
-        // Draw HP Restored on Level Up message if active
-        if (this.game.showHpRestoredMessageUntil > Date.now()) {
-            ctx.font = 'bold 18px Arial'; // Slightly smaller font
-            ctx.fillStyle = 'lime'; // Green color for heal
-            ctx.textAlign = 'left'; // Align with HP bar text
-            // Position above the HP bar and to the right of the avatar
-            const textX = PLAYER_AVATAR_SECTION_X + PLAYER_AVATAR_SIZE_BOTTOM_LEFT + 10; // Move right of avatar + margin
-            const textY = UI_EXP_BAR_Y - 25; // Position it above the EXP bar, which is above HP bar text
-            ctx.fillText('升级回复生命', textX, textY);
+            ctx.fillText('已暂停', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+            ctx.font = '24px Arial';
+            ctx.fillText('按空格键继续', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 40);
         }
 
         // Draw Player Avatar and ATK Display (Bottom-Left, above HP/EXP bars)
