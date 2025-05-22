@@ -123,13 +123,11 @@ class UI {
             const player = this.game.player;
 
             // Draw player avatar
-            if (player.isImageLoaded && player.image.complete && player.image.naturalHeight !== 0) {
-                ctx.drawImage(player.image, 
+            if (player.image) ctx.drawImage(player.image, 
                               PLAYER_AVATAR_SECTION_X, 
                               PLAYER_AVATAR_SECTION_Y, 
                               PLAYER_AVATAR_SIZE_BOTTOM_LEFT, 
                               PLAYER_AVATAR_SIZE_BOTTOM_LEFT);
-            }
 
             // Draw player ATK text next to avatar - REMOVED
             /*

@@ -1,9 +1,10 @@
 class Game {
-    constructor(canvas) {
+    constructor(canvas, resourceManager) {
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d');
         this.canvas.width = CANVAS_WIDTH;
         this.canvas.height = CANVAS_HEIGHT;
+        this.resourceManager = resourceManager;
 
         this.player = null;
         this.enemies = [];
@@ -32,17 +33,8 @@ class Game {
         this.initInputHandlers();
 
         // Preload ending images
-        this.endingSuccessImage = new Image();
-        this.isEndingSuccessImageLoaded = false;
-        this.endingSuccessImage.onload = () => { this.isEndingSuccessImageLoaded = true; console.log("Ending success image loaded."); };
-        this.endingSuccessImage.onerror = () => { console.error("Failed to load ending success image!"); };
-        this.endingSuccessImage.src = ENDING_SUCCESS_IMAGE_SRC;
-
-        this.endingFailImage = new Image();
-        this.isEndingFailImageLoaded = false;
-        this.endingFailImage.onload = () => { this.isEndingFailImageLoaded = true; console.log("Ending fail image loaded."); };
-        this.endingFailImage.onerror = () => { console.error("Failed to load ending fail image!"); };
-        this.endingFailImage.src = ENDING_FAIL_IMAGE_SRC;
+        // this.endingSuccessImage = this.resourceManager.getImage(ENDING_SUCCESS_IMAGE_SRC);
+        // this.endingFailImage = this.resourceManager.getImage(ENDING_FAIL_IMAGE_SRC);
     }
 
     initInputHandlers() {
@@ -68,7 +60,7 @@ class Game {
     }
 
     resetGame() {
-        this.player = new Player(CANVAS_WIDTH / 2 - PLAYER_WIDTH / 2, CANVAS_HEIGHT - PLAYER_HEIGHT - 20);
+        this.player = new Player(CANVAS_WIDTH / 2 - PLAYER_WIDTH / 2, CANVAS_HEIGHT - PLAYER_HEIGHT - 20, this.resourceManager);
         this.enemies = [];
         this.boss = null;
         this.textParticles = []; // Reset text particles
@@ -134,9 +126,9 @@ class Game {
             }
 
             if (enemyTypeRoll < 0.80) { // 80% chance for Type 1 (previously 0.65)
-                newEnemy = new EnemyType1(x, y, this.player ? this.player.level : 1);
+                newEnemy = new EnemyType1(x, y, this.player ? this.player.level : 1, this.resourceManager);
             } else { // 20% chance for Type 2 (previously 0.35)
-                newEnemy = new EnemyType2(x, y);
+                newEnemy = new EnemyType2(x, y, this.resourceManager);
             }
             this.enemies.push(newEnemy);
             this.lastEnemySpawnTime = now;
@@ -148,7 +140,7 @@ class Game {
 
     spawnBoss() {
         if (this.bossSpawned || this.gameState !== GAME_STATE_PLAYING) return;
-        this.boss = new BossEnemy();
+        this.boss = new BossEnemy(this.resourceManager);
         this.enemies.push(this.boss); // Add boss to the general enemy list for updates/drawing
         this.bossSpawned = true;
         console.log("BOSS SPAWNED!");
@@ -293,10 +285,16 @@ class Game {
         this.ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
         // Draw background based on game state
-        if (this.gameState === GAME_STATE_LEVEL_CLEAR && this.isEndingSuccessImageLoaded) {
-            this.ctx.drawImage(this.endingSuccessImage, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        } else if (this.gameState === GAME_STATE_GAME_OVER && this.isEndingFailImageLoaded) {
-            this.ctx.drawImage(this.endingFailImage, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        if (this.gameState === GAME_STATE_LEVEL_CLEAR) {
+            const img = this.resourceManager.getImage(ENDING_SUCCESS_IMAGE_SRC);
+            if (img && img.complete && img.naturalHeight !== 0) {
+                this.ctx.drawImage(img, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            }
+        } else if (this.gameState === GAME_STATE_GAME_OVER) {
+            const img = this.resourceManager.getImage(ENDING_FAIL_IMAGE_SRC);
+            if (img && img.complete && img.naturalHeight !== 0) {
+                this.ctx.drawImage(img, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            }
         } else {
             // Default scrolling background for playing, start screen, or if ending images not loaded
             this.ctx.fillStyle = '#001f3f'; // Dark blue background

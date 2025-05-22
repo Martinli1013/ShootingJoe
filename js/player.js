@@ -1,5 +1,5 @@
 class Player extends GameObject {
-    constructor(x, y) {
+    constructor(x, y, resourceManager) {
         super(x, y, PLAYER_WIDTH, PLAYER_HEIGHT, PLAYER_COLOR);
         this.hp = PLAYER_INITIAL_HP;
         this.maxHp = PLAYER_INITIAL_HP;
@@ -19,36 +19,21 @@ class Player extends GameObject {
         this.keys = {};
         this.justLeveledUp = false;
 
-        this.image = new Image();
-        this.isImageLoaded = false;
-        this.image.onload = () => { 
-            this.isImageLoaded = true; 
-            console.log("Player image loaded:", this.image.src, "Dimensions:", this.image.naturalWidth, "x", this.image.naturalHeight);
-        };
-        this.image.onerror = () => { 
-            console.error("Error loading player image:", this.image.src);
-        };
+        this.resourceManager = resourceManager;
         this.levelImages = {
             1: 'img/imgplayer_start.png',
             5: 'img/imgplayer_level5.png',
             10: 'img/imgplayer_level10.png',
             15: 'img/imgplayer_level15.png'
         };
-        this.setPlayerImageForLevel(this.level);
+        this.image = this.resourceManager.getImage(this.levelImages[1]); // Default image
 
-        this.hitFeedbackImage = new Image();
-        this.isHitFeedbackImageLoaded = false;
-        this.hitFeedbackImage.onload = () => { 
-            this.isHitFeedbackImageLoaded = true; 
-            console.log("Player hit feedback image loaded:", this.hitFeedbackImage.src);
-        };
-        this.hitFeedbackImage.onerror = () => { 
-            console.error("Error loading player hit feedback image:", this.hitFeedbackImage.src);
-        };
-        this.hitFeedbackImage.src = 'img/imgplayer_hit_feedback.png';
+        this.hitFeedbackImageSrc = 'img/imgplayer_hit_feedback.png';
+        // this.hitFeedbackImage = this.resourceManager.getImage(this.hitFeedbackImageSrc); // Get preloaded image
+
         this.isShowingHitFeedback = false;
         this.hitFeedbackEndTime = 0;
-        this.originalImageSrcBeforeHit = this.image.src;
+        this.originalImageSrcBeforeHit = this.levelImages[1];
     }
 
     regenerateHp(amount) {
@@ -67,13 +52,13 @@ class Player extends GameObject {
         } else if (level >= 5 && this.levelImages[5]) {
             srcToLoad = this.levelImages[5];
         }
+
         if (!this.isShowingHitFeedback) {
-            if (this.image.src !== srcToLoad) { 
-                this.isImageLoaded = false; 
-                this.image.src = srcToLoad;
-                this.originalImageSrcBeforeHit = srcToLoad;
-            }
+            this.image = this.resourceManager.getImage(srcToLoad);
+            this.originalImageSrcBeforeHit = srcToLoad;
         } else {
+            // If showing hit feedback, we still want to update what the original image *should* be
+            // so when feedback ends, it reverts to the correct level image.
             this.originalImageSrcBeforeHit = srcToLoad;
         }
     }
@@ -96,10 +81,7 @@ class Player extends GameObject {
         const now = Date.now();
         if (this.isShowingHitFeedback && now > this.hitFeedbackEndTime) {
             this.isShowingHitFeedback = false;
-            if (this.image.src !== this.originalImageSrcBeforeHit) {
-                this.isImageLoaded = false; 
-                this.image.src = this.originalImageSrcBeforeHit;
-            }
+            this.image = this.resourceManager.getImage(this.originalImageSrcBeforeHit);
         }
 
         // Check for overlap with boss for HP regeneration
@@ -172,7 +154,8 @@ class Player extends GameObject {
                 mainBulletWidth,
                 mainBulletHeight,
                 null,
-                'white'
+                'white',
+                this.resourceManager
             );
             this.bullets.push(newBullet);
         }
@@ -202,7 +185,8 @@ class Player extends GameObject {
                     sideBulletWidth,
                     sideBulletHeight,
                     null,
-                    'white'
+                    'white',
+                    this.resourceManager
                 );
                 this.bullets.push(newSideBullet);
             }
@@ -224,7 +208,8 @@ class Player extends GameObject {
                     sideBulletWidth,
                     sideBulletHeight,
                     null,
-                    'white'
+                    'white',
+                    this.resourceManager
                 );
                 this.bullets.push(newSideBullet);
             }
@@ -236,20 +221,20 @@ class Player extends GameObject {
 
         this.hp -= amount;
         this.hp = Math.max(0, this.hp);
-
         console.log("Player hit! HP:", this.hp);
 
-        if (this.isHitFeedbackImageLoaded && this.hitFeedbackImage.complete) {
-            this.image.src = this.hitFeedbackImage.src;
-            this.isImageLoaded = true;
+        const hitImg = this.resourceManager.getImage(this.hitFeedbackImageSrc);
+        if (hitImg && hitImg.complete && hitImg.naturalHeight !== 0) {
+            this.image = hitImg;
             this.isShowingHitFeedback = true;
-            this.hitFeedbackEndTime = Date.now() + 300;
+            this.hitFeedbackEndTime = Date.now() + 300; // Show feedback for 300ms
         } else {
-            console.warn("Hit feedback image not loaded, using fallback or no visual feedback for hit.");
+            console.warn("Hit feedback image not available from ResourceManager, src:", this.hitFeedbackImageSrc);
+            // No visual feedback if image is not loaded, or just a color flash could be added here.
         }
 
         if (this.hp <= 0) {
-            this.isActive = false; 
+            this.isActive = false;
             console.log("Player destroyed!");
         }
     }
@@ -306,11 +291,15 @@ class Player extends GameObject {
 
     draw(ctx) {
         if (!this.isActive) return;
-
         this.bullets.forEach(bullet => bullet.draw(ctx));
 
-        if (this.isImageLoaded && this.image.complete && this.image.naturalHeight !== 0) {
+        if (this.image && this.image.complete && this.image.naturalHeight !== 0) {
             ctx.drawImage(this.image, this.x, this.y, this.width, this.height);
+        } else {
+            // Fallback if player image isn't available for some reason
+            ctx.fillStyle = PLAYER_COLOR; // Defined in constants.js
+            ctx.fillRect(this.x, this.y, this.width, this.height);
+            // console.warn("Drawing fallback for Player, image not loaded/available. Current image src expected:", this.image ? this.image.src : this.originalImageSrcBeforeHit);
         }
     }
 } 

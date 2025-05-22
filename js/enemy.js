@@ -1,6 +1,6 @@
 // Base class for all enemies
 class Enemy extends GameObject {
-    constructor(x, y, width, height, color, hp, speed, collisionDamage, expValue, imageSrc) {
+    constructor(x, y, width, height, color, hp, speed, collisionDamage, expValue, imageSrc, resourceManager) {
         super(x, y, width, height, color);
         this.hp = hp;
         this.maxHp = hp; // Initialize maxHp to the starting HP
@@ -8,16 +8,12 @@ class Enemy extends GameObject {
         this.collisionDamage = collisionDamage;
         this.expValue = expValue;
         this.isBoss = false; // Differentiate boss from regular enemies for game logic
+        this.resourceManager = resourceManager;
+        this.imageSrc = imageSrc;
+        this.image = imageSrc ? this.resourceManager.getImage(imageSrc) : null;
 
-        this.image = new Image();
-        this.isImageLoaded = false;
-        if (imageSrc) {
-            this.image.onload = () => {
-                this.isImageLoaded = true;
-            };
-            this.image.src = imageSrc;
-        } else {
-            console.warn("Enemy created without imageSrc:", this);
+        if (!this.image && imageSrc) {
+            console.warn("Enemy image failed to load from ResourceManager:", imageSrc);
         }
     }
 
@@ -42,25 +38,27 @@ class Enemy extends GameObject {
 
     draw(ctx) {
         if (!this.isActive) return;
-        if (this.isImageLoaded && this.image.complete && this.image.naturalHeight !== 0) {
+        if (this.image && this.image.complete && this.image.naturalHeight !== 0) {
             ctx.drawImage(this.image, this.x, this.y, this.width, this.height);
         } else {
-            // Fallback to drawing a rectangle if image not loaded or no src
-            ctx.fillStyle = this.color || 'red'; // Use original color or red as fallback
+            ctx.fillStyle = this.color || 'red';
             ctx.fillRect(this.x, this.y, this.width, this.height);
+            if (this.imageSrc && !this.image) {
+                // console.warn("Drawing fallback for Enemy, image not loaded:", this.imageSrc);
+            }
         }
     }
 }
 
 // Enemy Type 1: "女高中生" - Randomly flying
 class EnemyType1 extends Enemy {
-    constructor(x, y, playerLevel = 1) {
+    constructor(x, y, playerLevel = 1, resourceManager) {
         const speedIncrease = (playerLevel - 1) * ENEMY1_SPEED_SCALING_PER_PLAYER_LEVEL;
         const currentSpeedMin = ENEMY1_SPEED_MIN + speedIncrease;
         const currentSpeedMax = ENEMY1_SPEED_MAX + speedIncrease;
         
         const speed = getRandomFloat(currentSpeedMin, currentSpeedMax);
-        super(x, y, ENEMY1_WIDTH, ENEMY1_HEIGHT, ENEMY1_COLOR, ENEMY1_HP, speed, ENEMY1_COLLISION_DAMAGE, ENEMY1_EXP, 'img/imgenemy_girl.png');
+        super(x, y, ENEMY1_WIDTH, ENEMY1_HEIGHT, ENEMY1_COLOR, ENEMY1_HP, speed, ENEMY1_COLLISION_DAMAGE, ENEMY1_EXP, 'img/imgenemy_girl.png', resourceManager);
         // Add some horizontal movement tendency
         this.dx = getRandomFloat(-1, 1) * this.speed * 0.5; // Slower horizontal drift
     }
@@ -82,8 +80,8 @@ class EnemyType1 extends Enemy {
 
 // Enemy Type 2: "熟女" - Tracks player slowly
 class EnemyType2 extends Enemy {
-    constructor(x, y) {
-        super(x, y, ENEMY2_WIDTH, ENEMY2_HEIGHT, ENEMY2_COLOR, ENEMY2_HP, ENEMY2_SPEED, ENEMY2_COLLISION_DAMAGE, ENEMY2_EXP, 'img/imgenemy_lady.png');
+    constructor(x, y, resourceManager) {
+        super(x, y, ENEMY2_WIDTH, ENEMY2_HEIGHT, ENEMY2_COLOR, ENEMY2_HP, ENEMY2_SPEED, ENEMY2_COLLISION_DAMAGE, ENEMY2_EXP, 'img/imgenemy_lady.png', resourceManager);
     }
 
     update(deltaTime, player) {
@@ -110,8 +108,8 @@ class EnemyType2 extends Enemy {
 
 // Boss Enemy: "蜘蛛精"
 class BossEnemy extends Enemy {
-    constructor() {
-        super(BOSS_X, BOSS_Y, BOSS_WIDTH, BOSS_HEIGHT, BOSS_COLOR, BOSS_INITIAL_HP, 0, 0, 0, 'img/imgboss_main.png');
+    constructor(resourceManager) {
+        super(BOSS_X, BOSS_Y, BOSS_WIDTH, BOSS_HEIGHT, BOSS_COLOR, BOSS_INITIAL_HP, 0, 0, 0, 'img/imgboss_main.png', resourceManager);
         this.isBoss = true;
         this.bullets = [];
         this.lastAttackTime = Date.now(); // Initialize lastAttackTime
@@ -165,7 +163,8 @@ class BossEnemy extends Enemy {
             BOSS_BULLET1_IMAGE_SRC,
             BOSS_BULLET1_WIDTH, BOSS_BULLET1_HEIGHT,
             player, // target for tracking
-            'purple' // Fallback color for Boss Bullet 1
+            'purple', // Fallback color for Boss Bullet 1
+            this.resourceManager
         ));
     }
 
@@ -203,7 +202,8 @@ class BossEnemy extends Enemy {
                 BOSS_BULLET2_IMAGE_SRC,
                 BOSS_BULLET2_WIDTH, BOSS_BULLET2_HEIGHT,
                 null, // No target for non-tracking bullets
-                BOSS_BULLET2_COLOR // Yellow fallback color
+                BOSS_BULLET2_COLOR, // Yellow fallback color
+                this.resourceManager
             ));
         }
     }
@@ -222,7 +222,7 @@ class BossEnemy extends Enemy {
                 player.y + player.height / 2 - (bulletY + BOSS_BULLET1_HEIGHT / 2),
                 player.x + player.width / 2 - (bulletX + BOSS_BULLET1_WIDTH / 2)
             );
-            this.bullets.push(new Bullet(bulletX, bulletY, BOSS_BULLET1_SPEED, BOSS_BULLET1_DAMAGE, false, angleToPlayer, BOSS_BULLET1_IMAGE_SRC, BOSS_BULLET1_WIDTH, BOSS_BULLET1_HEIGHT, player, 'purple'));
+            this.bullets.push(new Bullet(bulletX, bulletY, BOSS_BULLET1_SPEED, BOSS_BULLET1_DAMAGE, false, angleToPlayer, BOSS_BULLET1_IMAGE_SRC, BOSS_BULLET1_WIDTH, BOSS_BULLET1_HEIGHT, player, 'purple', this.resourceManager));
         } else {
             const baseAngleToPlayer = Math.atan2(
                 player.y + player.height / 2 - (this.y + this.height + BOSS_BULLET2_HEIGHT / 2),
@@ -236,7 +236,7 @@ class BossEnemy extends Enemy {
                 const bulletX = this.x + this.width / 2 - BOSS_BULLET2_WIDTH / 2;
                 const bulletY = this.y + this.height;
                 const currentAngleOld = startAngleOld + (i * angleStepOld);
-                this.bullets.push(new Bullet(bulletX, bulletY, BOSS_BULLET2_SPEED, BOSS_BULLET2_DAMAGE, false, currentAngleOld, BOSS_BULLET2_IMAGE_SRC, BOSS_BULLET2_WIDTH, BOSS_BULLET2_HEIGHT, null, BOSS_BULLET2_COLOR)); // Now null target
+                this.bullets.push(new Bullet(bulletX, bulletY, BOSS_BULLET2_SPEED, BOSS_BULLET2_DAMAGE, false, currentAngleOld, BOSS_BULLET2_IMAGE_SRC, BOSS_BULLET2_WIDTH, BOSS_BULLET2_HEIGHT, null, BOSS_BULLET2_COLOR, this.resourceManager)); // Now null target
             }
         }
     }

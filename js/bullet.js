@@ -12,8 +12,9 @@ class Bullet extends GameObject {
      * @param {number} height - Height of the bullet.
      * @param {GameObject | null} target - Optional target for the bullet to track.
      * @param {string | null} color - Fallback color for the bullet if image fails or is not specified.
+     * @param {ResourceManager} resourceManager - The resource manager for loading images.
      */
-    constructor(x, y, speed, damage, isPlayerBullet, angle, imageSrc, width, height, target = null, color = 'white') {
+    constructor(x, y, speed, damage, isPlayerBullet, angle, imageSrc, width, height, target = null, color = 'white', resourceManager) {
         super(x, y, width, height, null); // Base GameObject color not used directly for drawing bullets with images
         this.speed = speed;
         this.damage = damage;
@@ -21,22 +22,14 @@ class Bullet extends GameObject {
         this.angle = angle; 
         this.target = target; // Store the target
         this.color = color; // Store the fallback color
-
-        // Initial dx/dy based on angle, might be overridden by tracking
         this.dx = Math.cos(this.angle) * this.speed;
         this.dy = Math.sin(this.angle) * this.speed;
+        this.resourceManager = resourceManager;
+        this.imageSrc = imageSrc;
+        this.image = imageSrc ? this.resourceManager.getImage(imageSrc) : null;
 
-        this.image = new Image();
-        this.isImageLoaded = false;
-        if (imageSrc) {
-            this.image.onload = () => {
-                this.isImageLoaded = true;
-            };
-            this.image.src = imageSrc;
-        } else {
-            // Fallback if no imageSrc provided, though we intend to always provide it
-            this.isImageLoaded = false; 
-            console.warn("Bullet created without imageSrc:", this);
+        if (!this.image && imageSrc) {
+            console.warn("Bullet image failed to load from ResourceManager:", imageSrc);
         }
     }
 
@@ -74,17 +67,18 @@ class Bullet extends GameObject {
     draw(ctx) {
         if (!this.isActive) return;
 
-        if (this.image.src && this.image.src !== "") { // Check if an imageSrc was intended
-            if (this.isImageLoaded && this.image.complete && this.image.naturalHeight !== 0) {
-                ctx.drawImage(this.image, this.x, this.y, this.width, this.height);
-            } else {
-                // If an imageSrc was provided, but image is not ready, do nothing to prevent flicker.
-                // This was the original desired behavior for image-based bullets.
-            }
+        if (this.image && this.image.complete && this.image.naturalHeight !== 0) {
+            ctx.drawImage(this.image, this.x, this.y, this.width, this.height);
         } else {
-            // Only draw fallback color if no imageSrc was ever intended for this bullet.
-            ctx.fillStyle = this.color;
-            ctx.fillRect(this.x, this.y, this.width, this.height);
+            // Only draw fallback color if no imageSrc was intended or image failed to load via manager
+            if (!this.imageSrc || (this.imageSrc && !this.image)){
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+                if (this.imageSrc && !this.image) {
+                    // console.warn("Drawing fallback for Bullet, image not loaded:", this.imageSrc);
+                }
+            }
+            // If imageSrc was provided, and image is being loaded (but not yet complete), we draw nothing to avoid flicker.
         }
     }
 } 
